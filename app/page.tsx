@@ -14,8 +14,10 @@ export default function Home() {
     name: 'Jambo Linguists',
     address:
       'First Floor, Radley House, Richardshaw Road, Pudsey, West Yorkshire, LS28 6LE, United Kingdom',
-    email: 'info@jambolinguists.com',
+    email: 'jamii@jambolinguists.com',
   };
+  
+  const companyNumber = '15333696';
 
   const [client, setClient] = useState<Client>({ name: '', address: '', email: '' });
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
@@ -154,6 +156,8 @@ export default function Home() {
     let cy = y + 11;
     for (const line of wrap(company.address, 70)) { pdf.text(line, infoX, cy); cy += 5; }
     pdf.text(company.email, infoX, cy);
+    cy += 5;
+    pdf.text(`Company No. ${companyNumber}`, infoX, cy);
   
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(18);
@@ -332,6 +336,7 @@ export default function Home() {
       'Richardshaw Road, Pudsey,',
       'West Yorkshire, LS28 6LE',
       'United Kingdom',
+      `Company No. ${companyNumber}`,
     ];
     for (const line of rightLines) { pdf.text(line, rightX, companyY, { align: 'right' }); companyY += 5; }
 
@@ -508,6 +513,7 @@ export default function Home() {
       <h1>${escapeHtml(company.name)}</h1>
       <p>${escapeHtml(company.address)}</p>
       <p>${escapeHtml(company.email)}</p>
+      <p>Company No. ${companyNumber}</p>
     `;
 
     const clientHtml = `
@@ -526,6 +532,7 @@ export default function Home() {
           <p>Richardshaw Road, Pudsey,</p>
           <p>West Yorkshire, LS28 6LE</p>
           <p>United Kingdom</p>
+          <p>Company No. ${companyNumber}</p>
         </div>`;
       const leftBlock = `
         <div>
