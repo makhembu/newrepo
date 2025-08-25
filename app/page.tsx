@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 
 type Company = { name: string; address: string; email: string };
@@ -31,6 +31,8 @@ export default function Home() {
   const [vatNumber, setVatNumber] = useState<string>('');
 
   const [docType, setDocType] = useState<'invoice' | 'remittance'>('remittance');
+  // Single simple payment amount used everywhere
+  const [amountPaid, setAmountPaid] = useState<number>(0);
 
   const [hourRate, setHourRate] = useState<number>(20);
   const [minRate, setMinRate] = useState<number>(5);
@@ -50,6 +52,52 @@ export default function Home() {
     if (field === 'rate') nextItems[index].rate = Number(value);
     setGeneralItems(nextItems);
   };
+
+  // Persist form state to localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('jl-invoice-state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.client) setClient(parsed.client);
+        if (parsed.invoiceNumber) setInvoiceNumber(parsed.invoiceNumber);
+        if (parsed.generalItems) setGeneralItems(parsed.generalItems);
+        if (parsed.invoiceItems) setInvoiceItems(parsed.invoiceItems);
+        if (typeof parsed.taxIncluded === 'boolean') setTaxIncluded(parsed.taxIncluded);
+        if (typeof parsed.taxRate === 'number') setTaxRate(parsed.taxRate);
+        if (parsed.invoiceDate) setInvoiceDate(parsed.invoiceDate);
+        if (parsed.dueDate) setDueDate(parsed.dueDate);
+        if (parsed.vatNumber) setVatNumber(parsed.vatNumber);
+        if (parsed.docType) setDocType(parsed.docType);
+        if (typeof parsed.hourRate === 'number') setHourRate(parsed.hourRate);
+        if (typeof parsed.minRate === 'number') setMinRate(parsed.minRate);
+        if (typeof parsed.mileageRate === 'number') setMileageRate(parsed.mileageRate);
+        if (typeof parsed.amountPaid === 'number') setAmountPaid(parsed.amountPaid);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const state = {
+      client,
+      invoiceNumber,
+      generalItems,
+      invoiceItems,
+      taxIncluded,
+      taxRate,
+      invoiceDate,
+      dueDate,
+      vatNumber,
+      docType,
+      hourRate,
+      minRate,
+      mileageRate,
+      amountPaid,
+    };
+    try {
+      localStorage.setItem('jl-invoice-state', JSON.stringify(state));
+    } catch {}
+  }, [client, invoiceNumber, generalItems, invoiceItems, taxIncluded, taxRate, invoiceDate, dueDate, vatNumber, docType, hourRate, minRate, mileageRate, amountPaid]);
 
   const handleInvoiceItemChange: {
     (index: number, field: 'refNo' | 'date' | 'startTime' | 'finishTime', value: string): void;
@@ -88,17 +136,29 @@ export default function Home() {
     return h * 60 + m;
   };
 
+  const roundCurrency = (value: number): number => {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+  };
+
   const calculateInvoiceItemAmounts = (item: InvoiceItem) => {
     const startMin = parseTime(item.startTime);
     const finishMin = parseTime(item.finishTime);
-    const durationMin = Math.max(0, finishMin - startMin);
+    let durationMin = 0;
+    if (finishMin >= startMin) {
+      durationMin = finishMin - startMin;
+    } else {
+      // Overnight shift, add 24h
+      durationMin = finishMin + (24 * 60 - startMin);
+    }
+    durationMin = Math.max(0, durationMin);
+
     const hours = Math.floor(durationMin / 60);
     const remMin = durationMin % 60;
-    const hourCharge = hours * hourRate;
+    const hourCharge = roundCurrency(hours * hourRate);
     const minIncrements = Math.ceil(remMin / 15);
-    const minCharge = minIncrements * minRate;
-    const mileCharge = item.mileage * mileageRate;
-    const amount = hourCharge + minCharge + mileCharge;
+    const minCharge = roundCurrency(minIncrements * minRate);
+    const mileCharge = roundCurrency(item.mileage * mileageRate);
+    const amount = roundCurrency(hourCharge + minCharge + mileCharge);
     return { hours, remMin, hourCharge, minCharge, mileCharge, amount };
   };
 
@@ -185,12 +245,12 @@ export default function Home() {
     if (client.email) { pdf.text(client.email, margin, y); y += 6; }
   
     // Table
-    const colWidths = [28, 24, 25, 22, 33, 45, 45, 28];
+    const colWidths = [28, 24, 25, 25, 33, 45, 45, 28];
     const colPositions = colWidths.reduce<number[]>((acc, w, i) => {
       acc.push((i === 0 ? margin : acc[i - 1] + colWidths[i - 1]));
       return acc;
     }, []);
-    const headers = ['Ref No', 'Date', 'Start Time', 'Finish Time', `Hours x £${hourRate}`, `Mins (15min incr) x £${minRate}`, `Miles x £${mileageRate}`, 'Amount Due'];
+    const headers = ['Ref No', 'Date', 'Start Time', 'Finish Time', `Hours x £${hourRate}`, `Mins (15min incr) x £${minRate}`, `Miles x £${mileageRate}`, 'Amount Due £'];
   
     pdf.setFillColor(headerFill.r, headerFill.g, headerFill.b);
     pdf.rect(margin, y, pageWidth - margin * 2, 8, 'F');
@@ -198,6 +258,7 @@ export default function Home() {
     pdf.rect(margin, y, pageWidth - margin * 2, 8);
   
     pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
     headers.forEach((text, i) => {
       const alignRight = i === headers.length - 1;
       pdf.text(String(text), alignRight ? colPositions[i] + colWidths[i] - 2 : colPositions[i] + 2, y + 5, { align: alignRight ? 'right' : 'left' });
@@ -209,7 +270,7 @@ export default function Home() {
       colLineX += w;
     });
     pdf.line(colLineX, y, colLineX, y + 8);
-    y += 10;
+    y += 12; // add a touch more space before body rows
   
     pdf.setFont('helvetica', 'normal');
     const rowHeight = 7;
@@ -257,8 +318,14 @@ export default function Home() {
     }
   
     // Totals box
-    const boxW = 70, boxX = pageWidth - margin - boxW, boxY = y + 6, lineH = 7;
+    let boxY = y + 6;
+    const boxW = 70, boxX = pageWidth - margin - boxW, lineH = 7;
     const boxH = taxIncluded ? lineH * 4 : lineH * 3;
+    // If totals would overflow, move to next page
+    if (boxY + boxH + 18 > pageHeight - margin) {
+      pdf.addPage();
+      boxY = margin;
+    }
     pdf.setDrawColor(accent.r, accent.g, accent.b);
     pdf.setLineWidth(0.8);
     pdf.rect(boxX, boxY, boxW, boxH);
@@ -276,6 +343,8 @@ export default function Home() {
     const totalY = boxY + 5 + (taxIncluded ? lineH * 2 : lineH);
     pdf.text('Total', boxX + 4, totalY);
     pdf.text(formatCurrency(total), boxX + boxW - 4, totalY, { align: 'right' });
+
+    // No amount owed shown on invoice; remittance handles payments
   
     pdf.setFont('helvetica', 'normal');
     pdf.text('Thank you for your business', pageWidth / 2, boxY + boxH + 12, { align: 'center' });
@@ -290,6 +359,7 @@ export default function Home() {
   const generateRemittancePDF = async () => {
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 14;
     let y = margin;
 
@@ -297,6 +367,17 @@ export default function Home() {
     const border = { r: 209, g: 213, b: 219 };
     const accent = { r: 107, g: 33, b: 168 };
     pdf.setTextColor(textDark.r, textDark.g, textDark.b);
+
+    // Surrounding bounding box for the page content
+    pdf.setDrawColor(border.r, border.g, border.b);
+    pdf.setLineWidth(0.8);
+    pdf.rect(margin - 2, margin - 2, pageWidth - (margin * 2) + 4, pageHeight - (margin * 2) + 4);
+
+    // Soft decorative background shapes for premium feel
+    const soft = { r: 250, g: 245, b: 255 }; // very light purple
+    // Top-right soft panel (reduced height, offset for better balance)
+    pdf.setFillColor(soft.r, soft.g, soft.b);
+    pdf.rect(pageWidth - margin - 90, y + 2, 90, 22, 'F');
 
     // Company logo on the right first
     const logoDataUrl = await getDataUrl(logoSrc);
@@ -367,67 +448,104 @@ export default function Home() {
     const metaY = companyY + 4;
     pdf.setFont('helvetica', 'bold');
     pdf.text('Invoice Number', rightX - 60, metaY);
-    pdf.text('Invoice Date', rightX - 60, metaY + 8);
-    pdf.text('Due Date', rightX - 60, metaY + 8 + 8);
-    pdf.text('VAT Number', rightX - 60, metaY + 8 + 8 + 8);
+    pdf.text('Invoice Date', rightX - 60, metaY + 9);
+    pdf.text('Due Date', rightX - 60, metaY + 18);
+    pdf.text('VAT Number', rightX - 60, metaY + 27);
     pdf.setFont('helvetica', 'normal');
     pdf.text(invoiceNumber || '—', rightX, metaY, { align: 'right' });
-    pdf.text(formatDateUK(invoiceDate), rightX, metaY + 8, { align: 'right' });
-    pdf.text(formatDateUK(dueDate), rightX, metaY + 8 + 8, { align: 'right' });
-    pdf.text(vatNumber || '—', rightX, metaY + 8 + 8 + 8, { align: 'right' });
+    pdf.text(formatDateUK(invoiceDate), rightX, metaY + 9, { align: 'right' });
+    pdf.text(formatDateUK(dueDate), rightX, metaY + 18, { align: 'right' });
+    pdf.text(vatNumber || '—', rightX, metaY + 27, { align: 'right' });
 
-    // Horizontal rule and Total GBP paid
-    const metaBottom = metaY + 8 + 8 + 8 + 8;
-    const hrY = Math.max(ly + 6, metaBottom + 6);
-    pdf.setDrawColor(border.r, border.g, border.b);
-    pdf.line(margin, hrY, pageWidth - margin, hrY);
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(10);
-    pdf.text('Total GBP paid', rightX - 60, hrY + 6);
-    pdf.text(formatCurrency(total), rightX, hrY + 6, { align: 'right' });
+    // Accent separator to match HTML preview (purple bar)
+    const metaBottom = metaY + 36;
+    const hrY = Math.max(ly + 6, metaBottom + 2);
+    pdf.setFillColor(accent.r, accent.g, accent.b);
+    pdf.rect(margin, hrY, pageWidth - margin * 2, 1.5, 'F');
+    const paidTotal = amountPaid > 0 ? amountPaid : total;
 
-    // Table headers
+    // Table headers styled like HTML preview
     const tblY = hrY + 16;
     const colDesc = margin;
     const colInvTotal = pageWidth - margin - 80;
     const colPaid = pageWidth - margin;
     pdf.setFont('helvetica', 'bold');
-    pdf.text('Description', colDesc, tblY);
-    pdf.text('Invoice Total', colInvTotal, tblY, { align: 'right' });
-    pdf.text('Amount Paid', colPaid, tblY, { align: 'right' });
-
+    pdf.setFontSize(11);
+    pdf.setFillColor(243, 244, 246);
+    pdf.rect(margin, tblY - 4, pageWidth - margin * 2, 10, 'F');
     pdf.setDrawColor(border.r, border.g, border.b);
-    pdf.line(margin, tblY + 3, pageWidth - margin, tblY + 3);
+    pdf.rect(margin, tblY - 4, pageWidth - margin * 2, 10);
+    pdf.text('Description', colDesc + 2, tblY + 2);
+    pdf.text('Invoice Total', colInvTotal - 2, tblY + 2, { align: 'right' });
+    pdf.text('Amount Paid', colPaid - 2, tblY + 2, { align: 'right' });
 
-    // Add rows for each general item
-    let rowY = tblY + 10;
+    // Add rows for each general item with proportional paid allocation (zebra striping)
+    let rowY = tblY + 16;
     pdf.setFont('helvetica', 'normal');
-    
+    pdf.setFontSize(10);
+
+    const itemTotals = generalItems.map(it => roundCurrency(it.quantity * it.rate));
+    const sumItems = itemTotals.reduce((s, n) => s + n, 0);
+    const grossTotal = roundCurrency(sumItems + (taxIncluded ? tax : 0));
+    const allocBase = grossTotal > 0 ? grossTotal : 1;
+    let remainingPaid = Math.min(paidTotal, grossTotal);
+
     for (let i = 0; i < generalItems.length; i++) {
       const item = generalItems[i];
-      const itemTotal = item.quantity * item.rate;
-      
+      const itemTotal = itemTotals[i];
+      const itemVatShare = taxIncluded && sumItems > 0 ? (itemTotal / sumItems) * tax : 0;
+      const itemGross = roundCurrency(itemTotal + itemVatShare);
+      let itemPaid = roundCurrency((itemGross / allocBase) * Math.min(paidTotal, grossTotal));
+      // Adjust last row to make sums match exactly
+      if (i === generalItems.length - 1) itemPaid = roundCurrency(remainingPaid);
+      remainingPaid = roundCurrency(remainingPaid - itemPaid);
+
       if (rowY + 20 > pdf.internal.pageSize.getHeight() - margin) {
         pdf.addPage();
         rowY = margin;
       }
-      
-      pdf.text(item.description || '', colDesc, rowY);
-      pdf.text(formatCurrency(itemTotal), colInvTotal, rowY, { align: 'right' });
-      pdf.text(formatCurrency(itemTotal), colPaid, rowY, { align: 'right' });
-      
-      rowY += 8;
+
+      // Zebra background every other row
+      if (i % 2 === 0) {
+        pdf.setFillColor(248, 250, 252);
+        pdf.rect(margin, rowY - 7, pageWidth - margin * 2, 14, 'F');
+      }
+
+      pdf.text(item.description || '', colDesc + 2, rowY);
+      pdf.text(formatCurrency(itemTotal), colInvTotal - 2, rowY, { align: 'right' });
+      pdf.text(formatCurrency(itemPaid), colPaid - 2, rowY, { align: 'right' });
+
+      // Row divider
+      pdf.setDrawColor(241, 245, 249);
+      pdf.line(margin, rowY + 7, pageWidth - margin, rowY + 7);
+
+      rowY += 14;
     }
 
     // Totals section
-    const totalsY = rowY + 12;
+    let totalsY = rowY + 12;
     const totalsBoxW = 70;
-    const totalsBoxX = pageWidth - margin - totalsBoxW;
+    const totalsBoxX = pageWidth - margin - totalsBoxW - 2;
     const lineH = 7;
     const totalsBoxH = taxIncluded ? lineH * 4 : lineH * 3;
     
-    pdf.setDrawColor(accent.r, accent.g, accent.b);
-    pdf.setLineWidth(0.8);
+    // If totals would overflow the page, move to a new page first
+    if (totalsY + totalsBoxH + 24 > pdf.internal.pageSize.getHeight() - margin) {
+      pdf.addPage();
+      // redraw surrounding bounding box on the new page
+      pdf.setDrawColor(border.r, border.g, border.b);
+      pdf.setLineWidth(0.8);
+      pdf.rect(margin - 2, margin - 2, pageWidth - (margin * 2) + 4, pdf.internal.pageSize.getHeight() - (margin * 2) + 4);
+      totalsY = margin; // start totals at top content area
+    }
+    
+    // Soft background behind totals box
+    pdf.setFillColor(soft.r, soft.g, soft.b);
+    pdf.rect(totalsBoxX - 4, totalsY - 4, totalsBoxW + 8, totalsBoxH + 8, 'F');
+
+    // Light grey border like preview
+    pdf.setDrawColor(border.r, border.g, border.b);
+    pdf.setLineWidth(0.5);
     pdf.rect(totalsBoxX, totalsY, totalsBoxW, totalsBoxH);
     
     pdf.setFont('helvetica', 'normal');
@@ -442,8 +560,18 @@ export default function Home() {
     
     pdf.setFont('helvetica', 'bold');
     const totalY = totalsY + 5 + (taxIncluded ? lineH * 2 : lineH);
-    pdf.text('Total', totalsBoxX + 4, totalY);
-    pdf.text(formatCurrency(total), totalsBoxX + totalsBoxW - 4, totalY, { align: 'right' });
+    pdf.text('Total GBP paid', totalsBoxX + 4, totalY);
+    pdf.text(formatCurrency(paidTotal), totalsBoxX + totalsBoxW - 4, totalY, { align: 'right' });
+
+    // Remaining balance if not fully paid
+    if (paidTotal < total) {
+      const remainY = totalY + 8;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(accent.r, accent.g, accent.b);
+      pdf.text('Remaining Balance', totalsBoxX + 4, remainY);
+      pdf.text(formatCurrency(roundCurrency(total - paidTotal)), totalsBoxX + totalsBoxW - 4, remainY, { align: 'right' });
+      pdf.setTextColor(textDark.r, textDark.g, textDark.b);
+    }
 
     // Footer note
     pdf.setFont('helvetica', 'normal');
@@ -475,11 +603,29 @@ export default function Home() {
     }
   }
 
-  const subTotal = docType === 'remittance'
-    ? generalItems.reduce((sum, item) => sum + item.quantity * item.rate, 0)
-    : invoiceItems.reduce((sum, item) => sum + calculateInvoiceItemAmounts(item).amount, 0);
-  const tax = taxIncluded ? (subTotal * taxRate) / 100 : 0;
-  const total = subTotal + tax;
+  const subTotal = useMemo(() => {
+    const base = docType === 'remittance'
+      ? generalItems.reduce((sum, item) => sum + item.quantity * item.rate, 0)
+      : invoiceItems.reduce((sum, item) => sum + calculateInvoiceItemAmounts(item).amount, 0);
+    return roundCurrency(base);
+  }, [docType, generalItems, invoiceItems]);
+
+  const tax = useMemo(() => {
+    const value = taxIncluded ? (subTotal * taxRate) / 100 : 0;
+    return roundCurrency(value);
+  }, [subTotal, taxIncluded, taxRate]);
+
+  const total = useMemo(() => roundCurrency(subTotal + tax), [subTotal, tax]);
+
+  // Paid and owed calculations (for UX and PDFs)
+  const effectivePaid = useMemo(() => roundCurrency(Math.max(0, amountPaid)), [amountPaid]);
+
+  const owed = useMemo(() => {
+    const value = Math.max(0, total - effectivePaid);
+    return roundCurrency(value);
+  }, [total, effectivePaid]);
+
+  const isOverpaid = useMemo(() => amountPaid > total, [amountPaid, total]);
 
   // Produce a standalone HTML string for iframe preview with premium styling
   const getPreviewHtml = (): string => {
@@ -487,7 +633,11 @@ export default function Home() {
       <style>
         * { box-sizing: border-box; }
         body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111827; background: #f3f4f6; }
-        .sheet { max-width: 900px; width: 100%; margin: 16px auto; background: #ffffff; padding: clamp(16px, 2.5vw, 24px); border: 1px solid #e5e7eb; box-shadow: 0 10px 15px rgba(0,0,0,0.05); }
+        .sheet { position: relative; max-width: 900px; width: 100%; margin: 16px auto; background: #ffffff; padding: clamp(16px, 2.5vw, 24px); border: 1px solid #e5e7eb; box-shadow: 0 10px 15px rgba(0,0,0,0.05); overflow: hidden; }
+        .sheet { outline: 2px solid #e5e7eb; outline-offset: -6px; border-radius: 4px; }
+        /* subtle decorative background */
+        .sheet::before { content: ''; position: absolute; right: -40px; top: -40px; width: 300px; height: 160px; background: radial-gradient(120px 80px at 70% 40%, rgba(124,58,237,0.06), transparent 70%); }
+        .sheet::after { content: ''; position: absolute; right: 20px; bottom: 24px; width: 320px; height: 160px; background: linear-gradient(180deg, rgba(124,58,237,0.06), rgba(124,58,237,0.0)); filter: blur(0.2px); }
         .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
         .logo { height: 56px; }
         .accent { height: 4px; background: #6b21a8; margin: 12px 0 16px; }
@@ -549,15 +699,27 @@ export default function Home() {
           <p style="margin:0 0 6px 0"><strong>VAT Number</strong><br/>${escapeHtml(vatNumber || '—')}</p>
         </div>`;
 
-      const itemsRows = generalItems
-        .map((item) => `
+      const itemTotals = generalItems.map(it => (it.quantity * it.rate));
+      const sumItems = itemTotals.reduce((s, n) => s + n, 0);
+      const grossTotal = +(sumItems + (taxIncluded ? tax : 0)).toFixed(2);
+      const paidTotal = amountPaid > 0 ? amountPaid : total;
+      const cappedPaid = Math.min(paidTotal, grossTotal);
+      let remainingPaid = cappedPaid;
+      const rowsHtml = generalItems.map((item, idx) => {
+        const itemTotal = itemTotals[idx];
+        const itemVatShare = taxIncluded && sumItems > 0 ? (itemTotal / sumItems) * tax : 0;
+        const itemGross = itemTotal + itemVatShare;
+        let itemPaid = +( (itemGross / (grossTotal || 1)) * cappedPaid ).toFixed(2);
+        if (idx === generalItems.length - 1) itemPaid = +remainingPaid.toFixed(2);
+        remainingPaid = +(remainingPaid - itemPaid).toFixed(2);
+        return `
           <tr>
             <td>${escapeHtml(item.description || '')}</td>
-            <td class="right">${f.format(item.quantity * item.rate)}</td>
-            <td class="right">${f.format(item.quantity * item.rate)}</td>
-          </tr>`
-        )
-        .join('');
+            <td class="right">${f.format(itemTotal)}</td>
+            <td class="right">${f.format(itemPaid)}</td>
+          </tr>`;
+      }).join('');
+      const remaining = Math.max(0, +(grossTotal - cappedPaid).toFixed(2));
 
       return `
         <!doctype html>
@@ -583,13 +745,14 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody>
-                  ${itemsRows}
+                  ${rowsHtml}
                 </tbody>
               </table>
               <div class="totals" style="width: 300px; margin-left: auto;">
                 <div class="totals-row"><span>Subtotal</span><span>${f.format(subTotal)}</span></div>
-                ${taxIncluded ? `<div class="totals-row"><span>VAT (${taxRate}%)</span><span>${f.format(tax)}</span></div>` : ''}
-                <div class="totals-row total"><span>Total GBP paid</span><span>${f.format(total)}</span></div>
+                ${taxIncluded ? `<div class=\"totals-row\"><span>VAT (${taxRate}%)</span><span>${f.format(tax)}</span></div>` : ''}
+                <div class="totals-row total"><span>Total GBP paid</span><span>${f.format(paidTotal)}</span></div>
+                ${paidTotal < total ? `<div class=\"totals-row\"><span><strong>Remaining Balance</strong></span><span><strong>${f.format(remaining)}</strong></span></div>` : ''}
               </div>
               <div class="thanks">Thank you for your business</div>
             </div>
@@ -597,6 +760,7 @@ export default function Home() {
         </html>`;
     } else {
       // Invoice preview
+      const amountColHeader = 'Amount Due £';
       const itemsRows = invoiceItems
         .map(
           (it) => {
@@ -650,7 +814,7 @@ export default function Home() {
                     <th style="text-align:left;">Duration hours x £${hourRate}</th>
                     <th style="text-align:left;">Duration minutes x £${minRate} every 15 min</th>
                     <th style="text-align:left;">Mileage £${mileageRate} per mile</th>
-                    <th class="right">Amount Due £</th>
+                    <th class="right">${amountColHeader}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -670,6 +834,26 @@ export default function Home() {
     }
   };
 
+  // Optionally memoize preview HTML to reduce regeneration while typing
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const memoPreviewHtml = useMemo(() => getPreviewHtml(), [
+    docType,
+    client,
+    invoiceNumber,
+    generalItems,
+    invoiceItems,
+    taxIncluded,
+    taxRate,
+    invoiceDate,
+    dueDate,
+    vatNumber,
+    hourRate,
+    minRate,
+    mileageRate,
+    amountPaid,
+    owed,
+  ]);
+
   function escapeHtml(str: string): string {
     return str
       .replace(/&/g, '&amp;')
@@ -681,12 +865,14 @@ export default function Home() {
 
   return (
     <div className="container mx-auto p-6" style={{ color: '#111827', backgroundColor: '#f8fafc' }}>
-      <h1 className="text-2xl font-bold mb-4">Jambo Linguists Invoice Generator</h1>
+      <h1 className="text-2xl font-bold mb-2">Jambo Linguists Invoice Generator</h1>
+      <p className="text-sm mb-4" style={{ color: '#4b5563' }}>Fill in the boxes below. We save as you type. When youre ready, press Download.</p>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Form column */}
         <div className="bg-white rounded p-4" style={{ border: '1px solid #e5e7eb', color: '#111827' }}>
-          <h2 className="text-lg font-semibold mb-3">Details</h2>
+          <h2 className="text-lg font-semibold mb-1">Details</h2>
+          <p className="text-sm mb-3" style={{ color: '#6b7280' }}>Choose what you want to make, then enter who its for and the dates.</p>
 
           {/* Document Type Toggle */}
           <div className="mb-4">
@@ -700,23 +886,25 @@ export default function Home() {
               <option value="remittance">Remittance Advice</option>
               <option value="invoice">Invoice</option>
             </select>
+            <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Remittance Advice shows what was paid. Invoice shows what is owed.</p>
           </div>
 
           {/* Client */}
           <div className="mb-4">
-            <h3 className="font-medium mb-2">Customer (Bill To)</h3>
+            <h3 className="font-medium mb-1">Customer (Bill To)</h3>
+            <p className="text-xs mb-2" style={{ color: '#6b7280' }}>Who is this for? Add their name, address and email.</p>
             <input
               type="text"
               value={client.name}
               onChange={(e) => setClient({ ...client, name: e.target.value })}
-              placeholder="Client name"
+              placeholder="e.g. Acme Ltd. or Jane Smith"
               className="w-full p-2 rounded mb-2"
               style={{ border: '1px solid #d1d5db' }}
             />
             <textarea
               value={client.address}
               onChange={(e) => setClient({ ...client, address: e.target.value })}
-              placeholder="Client address"
+              placeholder="Street, City, Postcode"
               className="w-full p-2 rounded mb-2"
               rows={3}
               style={{ border: '1px solid #d1d5db' }}
@@ -725,7 +913,7 @@ export default function Home() {
               type="email"
               value={client.email}
               onChange={(e) => setClient({ ...client, email: e.target.value })}
-              placeholder="Client email"
+              placeholder="name@example.com"
               className="w-full p-2 rounded"
               style={{ border: '1px solid #d1d5db' }}
             />
@@ -733,7 +921,8 @@ export default function Home() {
 
           {/* Invoice meta */}
           <div className="mb-4">
-            <h3 className="font-medium mb-2">Invoice</h3>
+            <h3 className="font-medium mb-1">Invoice</h3>
+            <p className="text-xs mb-2" style={{ color: '#6b7280' }}>Add the invoice number and dates. VAT number is optional.</p>
             <input
               type="text"
               value={invoiceNumber}
@@ -786,9 +975,14 @@ export default function Home() {
                 className="px-3 py-2 rounded text-sm"
                 style={{ backgroundColor: '#3b82f6', color: '#ffffff' }}
               >
-                Add Item
+                Add another item
               </button>
             </div>
+            {docType === 'invoice' ? (
+              <p className="text-xs" style={{ color: '#6b7280' }}>Enter each job with times and mileage. We add up hours, round minutes to the next 15 minutes, and include mileage.</p>
+            ) : (
+              <p className="text-xs" style={{ color: '#6b7280' }}>For each line, fill Description, Rate and Quantity. The total is Rate  d7 Quantity.</p>
+            )}
 
             {docType === 'invoice' && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -801,6 +995,7 @@ export default function Home() {
                     className="w-full p-2 rounded"
                     style={{ border: '1px solid #d1d5db' }}
                     min={0}
+                    step="0.01"
                   />
                 </div>
                 <div>
@@ -812,6 +1007,7 @@ export default function Home() {
                     className="w-full p-2 rounded"
                     style={{ border: '1px solid #d1d5db' }}
                     min={0}
+                    step="0.01"
                   />
                 </div>
                 <div>
@@ -826,8 +1022,11 @@ export default function Home() {
                     step="0.01"
                   />
                 </div>
+                
               </div>
             )}
+
+            {docType === 'remittance' && null}
 
             <div className="space-y-3">
               {docType === 'remittance' ? (
@@ -860,6 +1059,7 @@ export default function Home() {
                         placeholder="Rate"
                         value={it.rate}
                         min={0}
+                        step="0.01"
                         onChange={(e) =>
                           handleGeneralItemChange(index, "rate", Number(e.target.value))
                         }
@@ -982,6 +1182,7 @@ export default function Home() {
                         placeholder="Mileage"
                         value={it.mileage}
                         min={0}
+                        step="0.1"
                         onChange={(e) => handleInvoiceItemChange(index, "mileage", Number(e.target.value))}
                       />
                       <label
@@ -1033,28 +1234,88 @@ export default function Home() {
               </div>
             </div>
             <div className="text-right mt-3 font-semibold">
-              Total: {total.toFixed(2)}
+              {docType === 'remittance' ? 'Total GBP paid' : 'Total'}: {(docType === 'remittance' ? (amountPaid > 0 ? amountPaid : total) : total).toFixed(2)}
             </div>
           </div>
 
+          {/* Payment (remittance only) */}
+          {docType === 'remittance' && (
+          <div className="mt-4">
+            <h3 className="font-medium mb-1">Payment</h3>
+            <p className="text-xs mb-2" style={{ color: '#6b7280' }}>If some money was paid already, type it here.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm mb-1">Amount paid (£)</label>
+                <input
+                  type="number"
+                  className="w-full p-2 rounded"
+                  style={{ border: '1px solid #d1d5db' }}
+                  min={0}
+                  step="0.01"
+                  value={amountPaid}
+                  onChange={(e) => setAmountPaid(Number(e.target.value))}
+                />
+              </div>
+              <div className="flex items-end">
+                <p className="text-sm" style={{ color: '#111827' }}>Amount owed: <strong>{formatCurrency(owed)}</strong></p>
+              </div>
+            </div>
+            {isOverpaid && (
+              <p className="text-xs mt-2" style={{ color: '#b91c1c' }}>Amount paid cant be more than the total.</p>
+            )}
+          </div>
+          )}
+
+          {(() => {
+            const downloadLabel = docType === 'remittance' ? 'Download Remittance PDF' : 'Download Invoice PDF';
+            const disabled = false;
+            return (
+              <button
+                onClick={generatePDF}
+                className="w-full py-3 rounded font-medium"
+                style={{ backgroundColor: '#22c55e', color: '#ffffff' }}
+                aria-label={downloadLabel}
+                disabled={disabled}
+              >
+                {downloadLabel}
+              </button>
+            );
+          })()}
           <button
-            onClick={generatePDF}
-            className="w-full py-3 rounded font-medium"
-            style={{ backgroundColor: '#22c55e', color: '#ffffff' }}
+            onClick={() => {
+              setClient({ name: '', address: '', email: '' });
+              setInvoiceNumber('');
+              setGeneralItems([{ description: '', quantity: 1, rate: 0 }]);
+              setInvoiceItems([{ refNo: '', date: '', startTime: '', finishTime: '', mileage: 0 }]);
+              setTaxIncluded(false);
+              setTaxRate(20);
+              setInvoiceDate('');
+              setDueDate('');
+              setVatNumber('');
+              setDocType('remittance');
+              setHourRate(20);
+              setMinRate(5);
+              setMileageRate(0.35);
+              setAmountPaid(0);
+              try { localStorage.removeItem('jl-invoice-state'); } catch {}
+            }}
+            className="w-full py-3 rounded font-medium mt-2"
+            style={{ backgroundColor: '#ef4444', color: '#ffffff' }}
           >
-            Download PDF
+            Reset
           </button>
         </div>
 
         {/* Preview column */}
         <div style={{ color: '#111827' }}>
-          <h2 className="text-lg font-semibold mb-3">Live Preview</h2>
+          <h2 className="text-lg font-semibold mb-1">Preview</h2>
+          <p className="text-sm mb-2" style={{ color: '#6b7280' }}>This is exactly what your PDF will look like.</p>
           <div className="w-full bg-white rounded overflow-hidden" style={{ border: '1px solid #e5e7eb' }}>
             <iframe
               title="Preview"
               className="w-full"
               style={{ height: 'min(1100px, 80vh)' }}
-              srcDoc={getPreviewHtml()}
+              srcDoc={memoPreviewHtml}
             />
           </div>
         </div>
