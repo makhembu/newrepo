@@ -160,7 +160,7 @@ export default function Home() {
     return Math.round((value + Number.EPSILON) * 100) / 100;
   };
 
-  const calculateInvoiceItemAmounts = (item: InvoiceItem) => {
+  const calculateInvoiceItemAmounts = (item: InvoiceItem, includeTravelTime: boolean = false) => {
     const startMin = parseTime(item.startTime);
     const finishMin = parseTime(item.finishTime);
     let durationMin = 0;
@@ -178,8 +178,9 @@ export default function Home() {
     const minIncrements = Math.ceil(remMin / 15);
     const minCharge = roundCurrency(minIncrements * minRate);
     const mileCharge = roundCurrency(item.mileage * mileageRate);
-    const amount = roundCurrency(hourCharge + minCharge + mileCharge);
-    return { hours, remMin, hourCharge, minCharge, mileCharge, amount };
+    const travelCharge = includeTravelTime ? roundCurrency(travelTimeHours * travelTimeRate) : 0;
+    const amount = roundCurrency(hourCharge + minCharge + mileCharge + travelCharge);
+    return { hours, remMin, hourCharge, minCharge, mileCharge, travelCharge, amount };
   };
 
   // Build a fully vector PDF with jsPDF (no screenshots)
@@ -347,7 +348,7 @@ export default function Home() {
   
     for (let i = 0; i < invoiceItems.length; i++) {
       const it = invoiceItems[i];
-      const { hours, remMin, hourCharge, minCharge, mileCharge, amount } = calculateInvoiceItemAmounts(it);
+      const { hours, remMin, hourCharge, minCharge, mileCharge, travelCharge, amount } = calculateInvoiceItemAmounts(it, true);
   
       // Compute wrapped lines for Description (no word breaking)
       const descMaxW = colWidths[0] - 4;
@@ -361,8 +362,8 @@ export default function Home() {
         pdf.rect(margin, y - rowPadding, pageWidth - margin * 2, rh + rowPadding * 2, 'F');
       }
   
-      const travelColValue = (i === 0 && travelAmount > 0)
-        ? `${travelTimeHours} x £${travelTimeRate} = ${formatCurrency(travelAmount)}`
+      const travelColValue = travelCharge > 0
+        ? `${travelTimeHours} x £${travelTimeRate} = ${formatCurrency(travelCharge)}`
         : '';
 
       const rowValues = [
@@ -746,9 +747,9 @@ export default function Home() {
   const subTotal = useMemo(() => {
     const base = docType === 'remittance'
       ? generalItems.reduce((sum, item) => sum + item.quantity * item.rate, 0)
-      : invoiceItems.reduce((sum, item) => sum + calculateInvoiceItemAmounts(item).amount, 0) + travelAmount;
+      : invoiceItems.reduce((sum, item) => sum + calculateInvoiceItemAmounts(item, true).amount, 0);
     return roundCurrency(base);
-  }, [docType, generalItems, invoiceItems, travelAmount]);
+  }, [docType, generalItems, invoiceItems]);
 
   const tax = useMemo(() => {
     const value = taxIncluded ? (subTotal * taxRate) / 100 : 0;
@@ -903,9 +904,9 @@ export default function Home() {
       const itemsRows = invoiceItems
         .map(
           (it, idx) => {
-            const { hours, remMin, hourCharge, minCharge, mileCharge, amount } = calculateInvoiceItemAmounts(it);
-            const travelCell = (idx === 0 && travelAmount > 0)
-              ? `${travelTimeHours} x £${travelTimeRate} = ${f.format(travelAmount)}`
+            const { hours, remMin, hourCharge, minCharge, mileCharge, travelCharge, amount } = calculateInvoiceItemAmounts(it, true);
+            const travelCell = travelCharge > 0
+              ? `${travelTimeHours} x £${travelTimeRate} = ${f.format(travelCharge)}`
               : '';
             return `
             <tr>
