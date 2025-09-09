@@ -36,12 +36,17 @@ export default function Home() {
   const [invoiceDate, setInvoiceDate] = useState<string>('');
   const [dueDate, setDueDate] = useState<string>('');
   const [vatNumber, setVatNumber] = useState<string>('');
+  const [paymentTerms, setPaymentTerms] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [venue, setVenue] = useState<string>('');
   const [language, setLanguage] = useState<string>('');
 
   const [docType, setDocType] = useState<'invoice' | 'remittance'>('remittance');
   // Single simple payment amount used everywhere
   const [amountPaid, setAmountPaid] = useState<number>(0);
+  
+  // Letterhead selection
+  const [letterheadStyle, setLetterheadStyle] = useState<'none' | 'classic' | 'modern' | 'geometric'>('none');
 
   const [hourRate, setHourRate] = useState<number>(20);
   const [minRate, setMinRate] = useState<number>(5);
@@ -80,6 +85,8 @@ export default function Home() {
         if (parsed.invoiceDate) setInvoiceDate(parsed.invoiceDate);
         if (parsed.dueDate) setDueDate(parsed.dueDate);
         if (parsed.vatNumber) setVatNumber(parsed.vatNumber);
+        if (parsed.paymentTerms) setPaymentTerms(parsed.paymentTerms);
+        if (parsed.paymentMethod) setPaymentMethod(parsed.paymentMethod);
         if (parsed.venue) setVenue(parsed.venue);
         if (parsed.language) setLanguage(parsed.language);
         if (parsed.docType) setDocType(parsed.docType);
@@ -89,6 +96,7 @@ export default function Home() {
         if (typeof parsed.travelTimeHours === 'number') setTravelTimeHours(parsed.travelTimeHours);
         if (typeof parsed.travelTimeRate === 'number') setTravelTimeRate(parsed.travelTimeRate);
         if (typeof parsed.amountPaid === 'number') setAmountPaid(parsed.amountPaid);
+        if (parsed.letterheadStyle) setLetterheadStyle(parsed.letterheadStyle);
       }
     } catch {}
   }, []);
@@ -104,6 +112,8 @@ export default function Home() {
       invoiceDate,
       dueDate,
       vatNumber,
+      paymentTerms,
+      paymentMethod,
       docType,
       hourRate,
       minRate,
@@ -113,11 +123,12 @@ export default function Home() {
       amountPaid,
       venue,
       language,
+      letterheadStyle,
     };
     try {
       localStorage.setItem('jl-invoice-state', JSON.stringify(state));
     } catch {}
-  }, [client, invoiceNumber, generalItems, invoiceItems, taxIncluded, taxRate, invoiceDate, dueDate, vatNumber, docType, hourRate, minRate, mileageRate, travelTimeHours, travelTimeRate, amountPaid, venue, language]);
+  }, [client, invoiceNumber, generalItems, invoiceItems, taxIncluded, taxRate, invoiceDate, dueDate, vatNumber, paymentTerms, paymentMethod, docType, hourRate, minRate, mileageRate, travelTimeHours, travelTimeRate, amountPaid, venue, language, letterheadStyle]);
 
   const handleInvoiceItemChange: {
     (index: number, field: 'refNo' | 'date' | 'startTime' | 'finishTime', value: string): void;
@@ -205,22 +216,26 @@ export default function Home() {
     const rowLight = { r: 248, g: 250, b: 252 };
     const headerFill = { r: 243, g: 244, b: 246 };
     const accent = { r: 107, g: 33, b: 168 };
+    const accentDark = { r: 88, g: 28, b: 135 };
+    const accentLight = { r: 139, g: 92, b: 246 };
     pdf.setTextColor(textDark.r, textDark.g, textDark.b);
+
+    // Enterprise background: outer frame and soft panels
+    pdf.setDrawColor(209, 213, 219);
+    pdf.setLineWidth(0.6);
+    pdf.rect(margin - 4, margin - 4, pageWidth - (margin * 2) + 8, pageHeight - (margin * 2) + 8);
+    // Soft top-right brand panel
+    pdf.setFillColor(246, 243, 255);
+    pdf.rect(pageWidth - margin - 70, margin, 70, 24, 'F');
+    // Soft bottom-left panel
+    pdf.setFillColor(249, 250, 251);
+    pdf.rect(margin, pageHeight - margin - 24, 90, 20, 'F');
   
-    // Logo + Company Info
+    // Render letterhead if selected
     const logoDataUrl = await getDataUrl(logoSrc);
-    const logoH = 18, logoW = 54;
-    if (logoDataUrl) {
-      try { pdf.addImage(logoDataUrl as string, 'JPEG', margin, y, logoW, logoH, undefined, 'FAST'); } catch {}
-    }
-  
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(14);
-    const infoX = margin + (logoDataUrl ? logoW + 6 : 0);
-  
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-  
+    y = renderLetterhead(pdf, pageWidth, margin, y, logoDataUrl);
+    
+    // Helper function for text wrapping
     const wrap = (text: string, maxWidth: number) => {
       const words = (text || '').split(' ');
       const lines: string[] = [];
@@ -232,26 +247,60 @@ export default function Home() {
       if (line) lines.push(line);
       return lines;
     };
-  
-    let cy = y + 6;
-    for (const line of wrap(company.address, 70)) { pdf.text(line, infoX, cy); cy += 5; }
-    pdf.text(`Tel: ${companyPhone}`, infoX, cy); cy += 5;
-    pdf.text(company.email, infoX, cy);
-  
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(18);
-    pdf.text('INVOICE', pageWidth - margin, y + 6, { align: 'right' });
-  
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    pdf.text(`Date: ${formatDateUK(invoiceDate)}`, pageWidth - margin, y + 12, { align: 'right' });
-    pdf.text(`Invoice #: ${invoiceNumber || '—'}`, pageWidth - margin, y + 17, { align: 'right' });
-    pdf.text(`Due Date: ${formatDateUK(dueDate)}`, pageWidth - margin, y + 22, { align: 'right' });
-  
-    const headerBottom = Math.max(y + logoH + 8, cy + 6);
-    pdf.setFillColor(accent.r, accent.g, accent.b);
-    pdf.rect(margin, headerBottom, pageWidth - margin * 2, 1.5, 'F');
-    y = headerBottom + 8;
+
+    // If no letterhead, show traditional header
+    if (letterheadStyle === 'none') {
+      // Logo + Company Info
+      const logoH = 18, logoW = 54;
+      if (logoDataUrl) {
+        try { pdf.addImage(logoDataUrl as string, 'JPEG', margin, y, logoW, logoH, undefined, 'FAST'); } catch {}
+      }
+    
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      const infoX = margin + (logoDataUrl ? logoW + 6 : 0);
+    
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+    
+      let cy = y + 6;
+      for (const line of wrap(company.address, 70)) { pdf.text(line, infoX, cy); cy += 5; }
+      pdf.text(`Tel: ${companyPhone}`, infoX, cy); cy += 5;
+      pdf.text(company.email, infoX, cy);
+    
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(18);
+      pdf.text('INVOICE', pageWidth - margin, y + 6, { align: 'right' });
+    
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.text(`Date: ${formatDateUK(invoiceDate)}`, pageWidth - margin, y + 12, { align: 'right' });
+      pdf.text(`Invoice #: ${invoiceNumber || '—'}`, pageWidth - margin, y + 17, { align: 'right' });
+      pdf.text(`Due Date: ${formatDateUK(dueDate)}`, pageWidth - margin, y + 22, { align: 'right' });
+      pdf.text(`VAT Number: ${vatNumber || '—'}`, pageWidth - margin, y + 27, { align: 'right' });
+    
+      const headerBottom = Math.max(y + logoH + 8, cy + 6);
+      pdf.setFillColor(accent.r, accent.g, accent.b);
+      pdf.rect(margin, headerBottom, pageWidth - margin * 2, 1.5, 'F');
+      y = headerBottom + 8;
+    } else {
+      // With letterhead, add invoice details below
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(18);
+      pdf.text('INVOICE', pageWidth - margin, y - 10, { align: 'right' });
+    
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.text(`Date: ${formatDateUK(invoiceDate)}`, pageWidth - margin, y - 4, { align: 'right' });
+      pdf.text(`Invoice #: ${invoiceNumber || '—'}`, pageWidth - margin, y + 1, { align: 'right' });
+      pdf.text(`Due Date: ${formatDateUK(dueDate)}`, pageWidth - margin, y + 6, { align: 'right' });
+      pdf.text(`VAT Number: ${vatNumber || '—'}`, pageWidth - margin, y + 11, { align: 'right' });
+      
+      // Add separator line
+      pdf.setFillColor(accent.r, accent.g, accent.b);
+      pdf.rect(margin, y + 10, pageWidth - margin * 2, 1.5, 'F');
+      y += 18;
+    }
 
     // (Bank details moved near totals/footer)
   
@@ -305,31 +354,46 @@ export default function Home() {
     // Travel time now shown as a table column (not a separate line)
 
     // Table
-    // Added an extra column for Travel Time
-    const colWidths = [26, 22, 23, 23, 32, 40, 40, 34, 28];
+    // Build dynamic columns (omit minutes column if minute rate is not set)
+    const includeMinutes = minRate > 0;
+    const columns: { key: string; w: number; header: string; align?: 'left' | 'right' }[] = [
+      { key: 'desc', w: 26, header: 'Description' },
+      { key: 'date', w: 22, header: 'Date' },
+      { key: 'start', w: 23, header: 'Start Time' },
+      { key: 'finish', w: 23, header: 'Finish Time' },
+      { key: 'hours', w: 32, header: `Hours x £${hourRate}` },
+      ...(includeMinutes ? [{ key: 'mins', w: 40, header: `Mins (15min incr) x £${minRate}` }] : []),
+      { key: 'miles', w: 40, header: `Miles x £${mileageRate}` },
+      { key: 'travel', w: 34, header: `Travel Time x £${travelTimeRate}` },
+      { key: 'amount', w: 28, header: 'Total', align: 'right' },
+    ];
+
+    const colWidths = columns.map(c => c.w);
     const colPositions = colWidths.reduce<number[]>((acc, w, i) => {
-      acc.push((i === 0 ? margin : acc[i - 1] + colWidths[i - 1]));
+      acc.push(i === 0 ? margin : acc[i - 1] + colWidths[i - 1]);
       return acc;
     }, []);
-    const headers = ['Description', 'Date', 'Start Time', 'Finish Time', `Hours x £${hourRate}`, `Mins (15min incr) x £${minRate}`, `Miles x £${mileageRate}`, `Travel Time x £${travelTimeRate}`, 'Total'];
+    const tableW = colWidths.reduce((s, n) => s + n, 0);
   
     const headerH = 12;
-    pdf.setFillColor(headerFill.r, headerFill.g, headerFill.b);
-    pdf.rect(margin, y, pageWidth - margin * 2, headerH, 'F');
-    pdf.setDrawColor(borderLight.r, borderLight.g, borderLight.b);
-    pdf.rect(margin, y, pageWidth - margin * 2, headerH);
+    // Brand bar header like inspirations
+    pdf.setFillColor(accentDark.r, accentDark.g, accentDark.b);
+    pdf.rect(margin, y, tableW, headerH, 'F');
+    pdf.setDrawColor(accentDark.r, accentDark.g, accentDark.b);
+    pdf.rect(margin, y, tableW, headerH);
 
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(10);
-    headers.forEach((text, i) => {
-      const alignRight = i === headers.length - 1;
+    pdf.setTextColor(255, 255, 255);
+    columns.forEach((col, i) => {
+      const alignRight = i === columns.length - 1;
       const maxW = colWidths[i] - 4;
-      const lines = wrap(String(text), maxW).slice(0, 2);
-      const baseX = alignRight ? colPositions[i] + colWidths[i] - 2 : colPositions[i] + 2;
+      const lines = wrap(String(col.header), maxW).slice(0, 2);
+      const baseX = (col.align === 'right' || alignRight) ? colPositions[i] + colWidths[i] - 2 : colPositions[i] + 2;
       const firstY = y + 4;
       const secondY = y + 8;
-      if (lines[0]) pdf.text(lines[0], baseX, firstY, { align: alignRight ? 'right' : 'left' });
-      if (lines[1]) pdf.text(lines[1], baseX, secondY, { align: alignRight ? 'right' : 'left' });
+      if (lines[0]) pdf.text(lines[0], baseX, firstY, { align: (col.align === 'right' || alignRight) ? 'right' : 'left' });
+      if (lines[1]) pdf.text(lines[1], baseX, secondY, { align: (col.align === 'right' || alignRight) ? 'right' : 'left' });
     });
 
     let colLineX = margin;
@@ -339,6 +403,8 @@ export default function Home() {
     });
     pdf.line(colLineX, y, colLineX, y + headerH);
     y += headerH + 4; // add a touch more space before body rows
+    // Reset text color after brand header
+    pdf.setTextColor(textDark.r, textDark.g, textDark.b);
   
     pdf.setFont('helvetica', 'normal');
     const rowHeight = 7;
@@ -372,7 +438,7 @@ export default function Home() {
         it.startTime || '',
         it.finishTime || '',
         `${hours} x £${hourRate} = ${formatCurrency(hourCharge)}`,
-        `${remMin} mins (${Math.ceil(remMin / 15)} incr) = ${formatCurrency(minCharge)}`,
+        ...(includeMinutes ? [`${remMin} mins (${Math.ceil(remMin / 15)} incr) = ${formatCurrency(minCharge)}`] : []),
         `${it.mileage} miles = ${formatCurrency(mileCharge)}`,
         travelColValue,
         formatCurrency(amount)
@@ -446,31 +512,47 @@ export default function Home() {
   
     pdf.setFont('helvetica', 'bold');
     const totalY = boxY + 5 + (taxIncluded ? lineH * 2 : lineH);
-    pdf.text('Total', boxX + 4, totalY);
+    // Emphasized total row like "button" style
+    pdf.setFillColor(accent.r, accent.g, accent.b);
+    pdf.rect(boxX, totalY - 5, boxW, lineH + 2, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.text('Amount Due', boxX + 4, totalY);
     pdf.text(formatCurrency(total), boxX + boxW - 4, totalY, { align: 'right' });
+    pdf.setTextColor(textDark.r, textDark.g, textDark.b);
 
     // No amount owed shown on invoice; remittance handles payments
   
-    // Bank details below totals (common placement)
+    // Payment terms/method and bank details below totals (common placement)
     let bankBlockY = boxY + boxH + 10;
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(11);
-    pdf.text('Bank Details', pageWidth / 2, bankBlockY, { align: 'center' });
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    bankBlockY += 6;
-    pdf.text(`Bank: ${bankDetails.bank}`, pageWidth / 2, bankBlockY, { align: 'center' }); bankBlockY += 5;
-    pdf.text(`Account Name: ${bankDetails.accountName}`, pageWidth / 2, bankBlockY, { align: 'center' }); bankBlockY += 5;
-    pdf.text(`Sort Code: ${bankDetails.sortCode}`, pageWidth / 2, bankBlockY, { align: 'center' }); bankBlockY += 5;
-    pdf.text(`Account No. ${bankDetails.accountNo}`, pageWidth / 2, bankBlockY, { align: 'center' });
+    if (paymentTerms || paymentMethod) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      if (paymentTerms) { pdf.text(`Payment Terms: ${paymentTerms}`, margin, bankBlockY); bankBlockY += 5; }
+      if (paymentMethod) { pdf.text(`Payment Method: ${paymentMethod}`, margin, bankBlockY); bankBlockY += 7; }
+    }
     
     pdf.setFont('helvetica', 'normal');
-    pdf.text('Thank you for your business', pageWidth / 2, bankBlockY + 10, { align: 'center' });
+    pdf.setFontSize(10);
+    const bankLine1 = `Bank: ${bankDetails.bank} | Account Name: ${bankDetails.accountName}`;
+    const bankLine2 = `Sort Code: ${bankDetails.sortCode} | Account No. ${bankDetails.accountNo}`;
+    pdf.text(bankLine1, pageWidth / 2, bankBlockY, { align: 'center' }); bankBlockY += 5;
+    pdf.text(bankLine2, pageWidth / 2, bankBlockY, { align: 'center' });
+    
+    // Footer elements with proper spacing - ensure they fit on current page
+    const footerStartY = bankBlockY + 12;
+    const footerMinY = pageHeight - 20; // Reserve 20mm from bottom for footer
+    
+    // If footer would be too close to bottom, adjust bank details spacing
+    let actualFooterY = Math.max(footerStartY, footerMinY);
+    
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    pdf.text('Thank you for your business', pageWidth / 2, actualFooterY, { align: 'center' });
   
-    // Footer company number
+    // Footer company number - positioned below thank you message
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
-    pdf.text(`Company No. ${companyNumber}`, pageWidth / 2, pageHeight - 6, { align: 'center' });
+    pdf.text(`Company No. ${companyNumber}`, pageWidth / 2, actualFooterY + 8, { align: 'center' });
 
     const fileSuffix = invoiceNumber ? `-${invoiceNumber}` : `-${new Date().toISOString().split('T')[0]}`;
     pdf.save(`invoice${fileSuffix}.pdf`);
@@ -491,57 +573,75 @@ export default function Home() {
     const accent = { r: 107, g: 33, b: 168 };
     pdf.setTextColor(textDark.r, textDark.g, textDark.b);
 
-    // Surrounding bounding box for the page content
+    // Enterprise background frame
     pdf.setDrawColor(border.r, border.g, border.b);
     pdf.setLineWidth(0.8);
-    pdf.rect(margin - 2, margin - 2, pageWidth - (margin * 2) + 4, pageHeight - (margin * 2) + 4);
+    pdf.rect(margin - 3, margin - 3, pageWidth - (margin * 2) + 6, pageHeight - (margin * 2) + 6);
 
-    // Soft decorative background shapes for premium feel
-    const soft = { r: 250, g: 245, b: 255 }; // very light purple
-    // Top-right soft panel (reduced height, offset for better balance)
+    // Soft decorative background panels
+    const soft = { r: 250, g: 245, b: 255 };
     pdf.setFillColor(soft.r, soft.g, soft.b);
-    pdf.rect(pageWidth - margin - 90, y + 2, 90, 22, 'F');
+    pdf.rect(pageWidth - margin - 80, y + 2, 80, 22, 'F');
+    pdf.setFillColor(249, 250, 251);
+    pdf.rect(margin, pageHeight - margin - 24, 90, 18, 'F');
 
-    // Company logo on the right first
+    // Render letterhead if selected
     const logoDataUrl = await getDataUrl(logoSrc);
-    const rightX = pageWidth - margin;
-    let ry = y;
-    if (logoDataUrl) {
-      // Maintain provided aspect ratio 563x172 (~3.273:1) within max bounds
-      const ratio = 563 / 172;
-      const maxW = 40; // mm
-      const maxH = 18; // mm
-      let w = Math.min(maxW, maxH * ratio);
-      let h = w / ratio;
-      try { pdf.addImage(logoDataUrl as string, 'JPEG', rightX - w, ry, w, h, undefined, 'FAST'); } catch {}
-      ry += h + 2;
+    y = renderLetterhead(pdf, pageWidth, margin, y, logoDataUrl);
+    
+    // If no letterhead, show traditional header
+    if (letterheadStyle === 'none') {
+      // Company logo on the right first
+      const rightX = pageWidth - margin;
+      let ry = y;
+      if (logoDataUrl) {
+        // Maintain provided aspect ratio 563x172 (~3.273:1) within max bounds
+        const ratio = 563 / 172;
+        const maxW = 40; // mm
+        const maxH = 18; // mm
+        let w = Math.min(maxW, maxH * ratio);
+        let h = w / ratio;
+        try { pdf.addImage(logoDataUrl as string, 'JPEG', rightX - w, ry, w, h, undefined, 'FAST'); } catch {}
+        ry += h + 2;
+      }
+
+      // Header row: title on the left, logo on the right (same row)
+      const titleY = y + 10;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(24);
+      pdf.text('REMITTANCE ADVICE', margin, titleY);
+
+      // Compute the baseline after header row and start company/recipient beneath
+      const headerBottom = Math.max(ry, titleY + 2);
+
+      // Company name and address on the right, below header row
+      let companyY = headerBottom + 6;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      const rightLines = [
+        'First Floor, Radley House,',
+        'Richardshaw Road, Pudsey,',
+        'West Yorkshire, LS28 6LE',
+        'United Kingdom',
+        `Tel: ${companyPhone}`,
+      ];
+      for (const line of rightLines) { pdf.text(line, rightX, companyY, { align: 'right' }); companyY += 5; }
+      y = companyY + 4;
+    } else {
+      // With letterhead, add remittance title below
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(24);
+      pdf.text('REMITTANCE ADVICE', margin, y);
+      y += 12;
     }
 
-    // Header row: title on the left, logo on the right (same row)
-    const titleY = y + 10;
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(24);
-    pdf.text('REMITTANCE ADVICE', margin, titleY);
-
-    // Compute the baseline after header row and start company/recipient beneath
-    const headerBottom = Math.max(ry, titleY + 2);
-
-    // Company name and address on the right, below header row
-    let companyY = headerBottom + 6;
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    const rightLines = [
-      'First Floor, Radley House,',
-      'Richardshaw Road, Pudsey,',
-      'West Yorkshire, LS28 6LE',
-      'United Kingdom',
-      `Tel: ${companyPhone}`,
-    ];
-    for (const line of rightLines) { pdf.text(line, rightX, companyY, { align: 'right' }); companyY += 5; }
+    // Define variables for remittance layout
+    const rightX = pageWidth - margin;
+    let companyY = y;
 
     // Left recipient block under header row with label and emphasis
     let lx = margin;
-    let ly = headerBottom + 6;
+    let ly = y;
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(11);
     pdf.text('Customer', lx, ly);
@@ -693,16 +793,14 @@ export default function Home() {
 
     // Bank details near footer (common placement)
     let bankY = totalsY + totalsBoxH + 10;
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(11);
-    pdf.text('Bank Details', pageWidth / 2, bankY, { align: 'center' });
+    if (paymentTerms) { pdf.text(`Payment Terms: ${paymentTerms}`, margin, bankY); bankY += 5; }
+    if (paymentMethod) { pdf.text(`Payment Method: ${paymentMethod}`, margin, bankY); bankY += 7; }
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
-    bankY += 6;
-    pdf.text(`Bank: ${bankDetails.bank}`, pageWidth / 2, bankY, { align: 'center' }); bankY += 5;
-    pdf.text(`Account Name: ${bankDetails.accountName}`, pageWidth / 2, bankY, { align: 'center' }); bankY += 5;
-    pdf.text(`Sort Code: ${bankDetails.sortCode}`, pageWidth / 2, bankY, { align: 'center' }); bankY += 5;
-    pdf.text(`Account No. ${bankDetails.accountNo}`, pageWidth / 2, bankY, { align: 'center' });
+    const bankLine1 = `Bank: ${bankDetails.bank} | Account Name: ${bankDetails.accountName}`;
+    const bankLine2 = `Sort Code: ${bankDetails.sortCode} | Account No. ${bankDetails.accountNo}`;
+    pdf.text(bankLine1, pageWidth / 2, bankY, { align: 'center' }); bankY += 5;
+    pdf.text(bankLine2, pageWidth / 2, bankY, { align: 'center' });
 
     // Footer note
     pdf.setFont('helvetica', 'normal');
@@ -721,6 +819,128 @@ export default function Home() {
   function splitMultiline(text: string): string[] {
     return (text || '').split(/\r?\n|,\s*/).filter(Boolean);
   }
+
+  // Letterhead design functions
+  const renderLetterhead = (pdf: jsPDF, pageWidth: number, margin: number, y: number, logoDataUrl: string | null) => {
+    if (letterheadStyle === 'none') return y;
+
+    const accent = { r: 107, g: 33, b: 168 };
+    const softAccent = { r: 124, g: 58, b: 237 };
+    const lightGray = { r: 243, g: 244, b: 246 };
+    
+    switch (letterheadStyle) {
+      case 'classic':
+        return renderClassicLetterhead(pdf, pageWidth, margin, y, logoDataUrl, accent);
+      case 'modern':
+        return renderModernLetterhead(pdf, pageWidth, margin, y, logoDataUrl, accent, lightGray);
+      case 'geometric':
+        return renderGeometricLetterhead(pdf, pageWidth, margin, y, logoDataUrl, accent, softAccent);
+      default:
+        return y;
+    }
+  };
+
+  const renderClassicLetterhead = (pdf: jsPDF, pageWidth: number, margin: number, y: number, logoDataUrl: string | null, accent: { r: number; g: number; b: number }) => {
+    // Clean executive top bar with logo
+    const topY = y - 8;
+    const headerH = 24;
+    
+    // Main header bar
+    pdf.setFillColor(88, 28, 135);
+    pdf.rect(0, topY, pageWidth, headerH, 'F');
+    
+    // Logo centered in header
+    if (logoDataUrl) {
+      const logoH = 16, logoW = 48;
+      const logoX = (pageWidth - logoW) / 2;
+      try { 
+        pdf.addImage(logoDataUrl as string, 'JPEG', logoX, topY + 4, logoW, logoH, undefined, 'FAST'); 
+      } catch {}
+    }
+
+    // Company contact below header
+    let infoY = topY + headerH + 8;
+    pdf.setTextColor(17, 24, 39);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    const centerX = pageWidth / 2;
+    const info = [company.address, `Tel: ${companyPhone}`, company.email];
+    for (const line of info) { 
+      pdf.text(line, centerX, infoY, { align: 'center' }); 
+      infoY += 4; 
+    }
+    
+    return infoY + 6;
+  };
+
+  const renderModernLetterhead = (pdf: jsPDF, pageWidth: number, margin: number, y: number, logoDataUrl: string | null, accent: { r: number; g: number; b: number }, lightGray: { r: number; g: number; b: number }) => {
+    // Swiss left rule with strong brand column
+    const rightX = pageWidth - margin;
+    const brandW = 12;
+    pdf.setFillColor(accent.r, accent.g, accent.b);
+    pdf.rect(margin, y - 2, brandW, 30, 'F');
+    
+    // Header band
+    pdf.setFillColor(lightGray.r, lightGray.g, lightGray.b);
+    pdf.rect(margin + brandW + 2, y, pageWidth - margin * 2 - brandW - 2, 24, 'F');
+    
+    // Logo and company
+    if (logoDataUrl) {
+      const logoH = 16, logoW = 48;
+      try { pdf.addImage(logoDataUrl as string, 'JPEG', margin + brandW + 6, y + 4, logoW, logoH, undefined, 'FAST'); } catch {}
+    }
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(12);
+    pdf.setTextColor(17, 24, 39);
+    pdf.text(company.name, margin + brandW + 6, y + 22);
+    
+    // Right-aligned contact
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    const lines = [company.address.split(',')[0], `Tel: ${companyPhone}`, company.email];
+    let cy = y + 6;
+    for (const line of lines) { pdf.text(line, rightX, cy, { align: 'right' }); cy += 4; }
+    
+    // Bottom hairline
+    pdf.setDrawColor(229, 231, 235);
+    pdf.setLineWidth(0.5);
+    pdf.line(margin, y + 26, pageWidth - margin, y + 26);
+    
+    return y + 34;
+  };
+
+  const renderGeometricLetterhead = (pdf: jsPDF, pageWidth: number, margin: number, y: number, logoDataUrl: string | null, accent: { r: number; g: number; b: number }, softAccent: { r: number; g: number; b: number }) => {
+    // Header + Footer rails with geometric accents
+    const railH = 16;
+    pdf.setFillColor(softAccent.r, softAccent.g, softAccent.b);
+    pdf.rect(0, y - 4, pageWidth, railH, 'F');
+    
+    // Diagonal accent on right
+    pdf.setFillColor(accent.r, accent.g, accent.b);
+    const rightX = pageWidth - margin;
+    pdf.triangle(rightX - 28, y - 4, rightX, y - 4, rightX, y + railH - 4, 'F');
+    
+    // Logo and company stacked
+    if (logoDataUrl) {
+      const logoH = 14, logoW = 44;
+      try { pdf.addImage(logoDataUrl as string, 'JPEG', margin + 2, y - 2, logoW, logoH, undefined, 'FAST'); } catch {}
+    }
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(12);
+    pdf.text(company.name, margin + 2, y + 9);
+    
+    // Contact microtext below rail
+    pdf.setTextColor(17, 24, 39);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    let cy = y + railH + 4;
+    const details = [company.address, `Tel: ${companyPhone}`, company.email];
+    for (const d of details) { pdf.text(d, margin, cy); cy += 4; }
+    
+    // Footer rail will be added by caller if needed; return new y
+    return cy + 4;
+  };
 
   async function getDataUrl(src: string): Promise<string | null> {
     if (!src) return null;
@@ -773,32 +993,128 @@ export default function Home() {
     const styles = `
       <style>
         * { box-sizing: border-box; }
-        body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111827; background: #f3f4f6; }
-        .sheet { position: relative; max-width: 900px; width: 100%; margin: 16px auto; background: #ffffff; padding: clamp(16px, 2.5vw, 24px); border: 1px solid #e5e7eb; box-shadow: 0 10px 15px rgba(0,0,0,0.05); overflow: hidden; }
-        .sheet { outline: 2px solid #e5e7eb; outline-offset: -6px; border-radius: 4px; }
-        /* subtle decorative background */
-        .sheet::before { content: ''; position: absolute; right: -40px; top: -40px; width: 300px; height: 160px; background: radial-gradient(120px 80px at 70% 40%, rgba(124,58,237,0.06), transparent 70%); }
-        .sheet::after { content: ''; position: absolute; right: 20px; bottom: 24px; width: 320px; height: 160px; background: linear-gradient(180deg, rgba(124,58,237,0.06), rgba(124,58,237,0.0)); filter: blur(0.2px); }
+        body { margin: 0; font-family: Inter, Arial, Helvetica, sans-serif; color: #111827; background: #f1f5f9; }
+        .sheet { position: relative; max-width: 960px; width: 100%; margin: 24px auto; background: #ffffff; padding: clamp(18px, 2.5vw, 28px); border: 1px solid #e5e7eb; box-shadow: 0 18px 28px rgba(2,6,23,0.08); overflow: hidden; border-radius: 6px; }
+        .sheet { outline: 2px solid #e5e7eb; outline-offset: -8px; }
+        /* enterprise decorative background */
+        .sheet::before { content: ''; position: absolute; right: -30px; top: -30px; width: 360px; height: 180px; background: radial-gradient(140px 90px at 70% 40%, rgba(124,58,237,0.06), transparent 70%); }
+        .sheet::after { content: ''; position: absolute; left: -20px; bottom: -20px; width: 340px; height: 160px; background: linear-gradient(180deg, rgba(2,6,23,0.04), rgba(2,6,23,0.0)); filter: blur(0.4px); }
         .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-        .logo { height: 56px; }
-        .accent { height: 4px; background: #6b21a8; margin: 12px 0 16px; }
-        h1 { margin: 0 0 8px 0; font-size: 20px; }
-        h2 { margin: 0; font-size: 16px; }
-        p { margin: 2px 0; font-size: 12px; }
+        .logo { height: 56px; filter: saturate(1.1) contrast(1.05); }
+        .accent { height: 4px; background: #6b21a8; margin: 12px 0 16px; border-radius: 2px; }
+        h1 { margin: 0 0 8px 0; font-size: 22px; letter-spacing: 0.2px; }
+        h2 { margin: 0; font-size: 18px; letter-spacing: 0.15px; }
+        p { margin: 2px 0; font-size: 12px; line-height: 1.5; }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { padding: 10px 8px; font-size: 12px; }
+        th, td { padding: 10px 8px; font-size: 12px; vertical-align: top; }
         thead tr { background: #f3f4f6; border: 1px solid #e5e7eb; }
-        tbody tr { border-bottom: 1px solid #f1f5f9; }
-        tbody tr:nth-child(even) { background: #f8fafc; }
+        tbody tr { border-bottom: 1px solid #eef2f7; }
+        tbody tr:nth-child(even) { background: #fafbfc; }
         .right { text-align: right; }
-        .totals { width: 260px; margin-left: auto; margin-top: 12px; border: 1px solid #e5e7eb; padding: 8px 12px; }
-        .totals-row { display: flex; justify-content: space-between; margin: 6px 0; }
+        .totals { width: 280px; margin-left: auto; margin-top: 12px; border: 1px solid #e5e7eb; padding: 10px 14px; border-radius: 6px; box-shadow: 0 6px 10px rgba(2,6,23,0.04); }
+        .totals-row { display: flex; justify-content: space-between; margin: 8px 0; }
         .totals-row.total { font-weight: 700; }
         .thanks { margin-top: 24px; font-size: 12px; color: #4b5563; text-align: center; }
+        
+        /* Letterhead styles */
+        .letterhead-classic { margin-bottom: 18px; position: relative; overflow: hidden; border-radius: 6px; }
+        .letterhead-classic .topbar { height: 60px; background: linear-gradient(120deg, #581c87, #7c3aed); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; color: #fff; font-weight: 800; letter-spacing: 0.5px; }
+        .letterhead-classic .topbar::after { content: ''; position: absolute; left: 0; right: 0; bottom: -18px; height: 36px; background: radial-gradient(60% 60% at 50% -20%, rgba(99,102,241,0.5), transparent 60%); }
+        .letterhead-classic .contact { font-size: 11px; text-align: center; margin-top: 8px; }
+        
+        .letterhead-modern { margin-bottom: 18px; display: grid; grid-template-columns: 12px 1fr; gap: 10px; align-items: center; }
+        .letterhead-modern .rail { width: 12px; height: 48px; background: #6b21a8; border-radius: 2px; }
+        .letterhead-modern .content { background: #f3f4f6; padding: 10px 14px; border-radius: 4px; box-shadow: inset 0 0 0 1px #e5e7eb; }
+        .letterhead-modern .company-name { font-size: 16px; font-weight: 700; margin: 0; }
+        .letterhead-modern .contact { font-size: 10px; text-align: right; line-height: 1.3; }
+        .letterhead-modern .accent-bar { height: 3px; background: #6b21a8; margin-top: 8px; border-radius: 2px; }
+        
+        .letterhead-geometric { position: relative; margin-bottom: 20px; padding-top: 8px; }
+        .letterhead-geometric .geometric-shapes { position: absolute; top: 0; right: 0; width: 140px; height: 70px; }
+        .letterhead-geometric .triangle { position: absolute; top: 0; right: 0; width: 0; height: 0; border-left: 40px solid transparent; border-right: 40px solid transparent; border-bottom: 40px solid rgba(124,58,237,0.24); }
+        .letterhead-geometric .square { position: absolute; bottom: 6px; left: 0; width: 24px; height: 24px; background: rgba(124,58,237,0.16); }
+        .letterhead-geometric .content { position: relative; z-index: 1; }
+        .letterhead-geometric .company-name { font-size: 18px; font-weight: bold; margin: 10px 0; }
+        .letterhead-geometric .contact { font-size: 10px; line-height: 1.4; }
+        .letterhead-geometric .contact-item { display: flex; align-items: center; margin: 2px 0; }
+        .letterhead-geometric .dot { width: 4px; height: 4px; background: #6b21a8; border-radius: 50%; margin-right: 8px; }
+        .letterhead-geometric .dashed-line { height: 2px; background: repeating-linear-gradient(to right, #6b21a8 0px, #6b21a8 4px, transparent 4px, transparent 8px); margin-top: 10px; border-radius: 1px; }
       </style>
     `;
 
     const f = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' });
+
+    const generateLetterheadHtml = () => {
+      if (letterheadStyle === 'none') return '';
+      
+      const logoHtml = `<img src="${logoSrc}" class="logo" alt="logo" style="height: 40px;" />`;
+      
+      switch (letterheadStyle) {
+        case 'classic':
+          return `
+            <div class="letterhead-classic">
+              <div class="topbar">
+                <img src="${logoSrc}" class="logo" alt="logo" style="height: 40px;" />
+              </div>
+              <div class="contact">
+                ${escapeHtml(company.address)} · Tel: ${escapeHtml(companyPhone)} · ${escapeHtml(company.email)}
+              </div>
+            </div>
+          `;
+        case 'modern':
+          return `
+            <div class="letterhead-modern">
+              <div class="rail"></div>
+              <div class="content">
+                <div class="row" style="align-items:center;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    ${logoHtml}
+                    <div class="company-name">${escapeHtml(company.name)}</div>
+                  </div>
+                  <div class="contact">
+                    ${escapeHtml(company.address.split(',')[0])}<br/>
+                    Tel: ${escapeHtml(companyPhone)}<br/>
+                    ${escapeHtml(company.email)}
+                  </div>
+                </div>
+                <div class="accent-bar"></div>
+              </div>
+            </div>
+          `;
+        case 'geometric':
+          return `
+            <div class="letterhead-geometric">
+              <div class="geometric-shapes">
+                <div class="triangle"></div>
+                <div class="square"></div>
+              </div>
+              <div class="content">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  ${logoHtml}
+                  <div class="company-name">${escapeHtml(company.name)}</div>
+                </div>
+                <div class="contact">
+                  <div class="contact-item">
+                    <div class="dot"></div>
+                    <span>${escapeHtml(company.address)}</span>
+                  </div>
+                  <div class="contact-item">
+                    <div class="dot"></div>
+                    <span>Tel: ${escapeHtml(companyPhone)}</span>
+                  </div>
+                  <div class="contact-item">
+                    <div class="dot"></div>
+                    <span>${escapeHtml(company.email)}</span>
+                  </div>
+                </div>
+                <div class="dashed-line"></div>
+              </div>
+            </div>
+          `;
+        default:
+          return '';
+      }
+    };
 
     const companyHtml = `
       <p>${escapeHtml(company.address)}</p>
@@ -866,6 +1182,7 @@ export default function Home() {
           <head><meta charset="utf-8" />${styles}</head>
           <body>
             <div class="sheet">
+              ${generateLetterheadHtml()}
               <div class="row">
                 ${leftBlock}
                 ${rightBlock}
@@ -893,6 +1210,8 @@ export default function Home() {
                 <div class="totals-row total"><span>Total GBP paid</span><span>${f.format(paidTotal)}</span></div>
                 ${paidTotal < total ? `<div class=\"totals-row\"><span><strong>Remaining Balance</strong></span><span><strong>${f.format(remaining)}</strong></span></div>` : ''}
               </div>
+              ${paymentTerms ? `<div class="thanks">Payment Terms: ${escapeHtml(paymentTerms)}</div>` : ''}
+              ${paymentMethod ? `<div class="thanks">Payment Method: ${escapeHtml(paymentMethod)}</div>` : ''}
               <div class="thanks">Thank you for your business</div>
               <div class="thanks" style="margin-top: 6px;">Company No. ${companyNumber}</div>
             </div>
@@ -900,7 +1219,7 @@ export default function Home() {
         </html>`;
     } else {
       // Invoice preview
-      const amountColHeader = 'Total';
+      const amountColHeader = 'Amount Due';
       const itemsRows = invoiceItems
         .map(
           (it, idx) => {
@@ -915,7 +1234,7 @@ export default function Home() {
               <td>${escapeHtml(it.startTime || '')}</td>
               <td>${escapeHtml(it.finishTime || '')}</td>
               <td>${hours} x £${hourRate} = ${f.format(hourCharge)}</td>
-              <td>${remMin} mins (${Math.ceil(remMin / 15)} incr) x £${minRate} = ${f.format(minCharge)}</td>
+              ${minRate > 0 ? `<td>${remMin} mins (${Math.ceil(remMin / 15)} incr) x £${minRate} = ${f.format(minCharge)}</td>` : ''}
               <td>${it.mileage} miles x £${mileageRate} = ${f.format(mileCharge)}</td>
               <td>${travelCell}</td>
               <td class="right">${f.format(amount)}</td>
@@ -940,16 +1259,17 @@ export default function Home() {
           <head><meta charset="utf-8" />${styles}</head>
           <body>
             <div class="sheet">
+              ${generateLetterheadHtml()}
               <div class="row">
                 <div>
-                  <img src="${logoSrc}" class="logo" alt="logo" />
-                  ${companyHtml}
+                  ${letterheadStyle === 'none' ? `<img src="${logoSrc}" class="logo" alt="logo" />${companyHtml}` : ''}
                 </div>
                 <div style="text-align:right">
                   <h2>Invoice</h2>
                   <p>Date: ${formatDateUK(invoiceDate)}</p>
                   <p>Invoice #: ${escapeHtml(invoiceNumber || '—')}</p>
                   <p>Due Date: ${formatDateUK(dueDate)}</p>
+                  <p>VAT Number: ${escapeHtml(vatNumber || '—')}</p>
                 </div>
               </div>
               <div class="accent"></div>
@@ -962,7 +1282,7 @@ export default function Home() {
                     <th style="text-align:left;">Start Time</th>
                     <th style="text-align:left;">Finish Time</th>
                     <th style="text-align:left;">Duration hours x £${hourRate}</th>
-                    <th style="text-align:left;">Duration minutes x £${minRate} every 15 min</th>
+                    ${minRate > 0 ? `<th style="text-align:left;">Duration minutes x £${minRate} every 15 min</th>` : ''}
                     <th style="text-align:left;">Mileage £${mileageRate} per mile</th>
                     <th style="text-align:left;">Travel Time x £${travelTimeRate}</th>
                     <th class="right">${amountColHeader}</th>
@@ -975,12 +1295,13 @@ export default function Home() {
               <div class="totals">
                 <div class="totals-row"><span>Subtotal</span><span>${subtotalStr}</span></div>
                 ${taxIncluded ? `<div class="totals-row"><span>VAT (${taxRate}%)</span><span>${taxStr}</span></div>` : ''}
-                <div class="totals-row total"><span>Total</span><span>${totalStr}</span></div>
+                <div class="totals-row total"><span>Amount Due</span><span>${totalStr}</span></div>
               </div>
               <div style="text-align:center; margin: 14px 0 4px 0; font-size: 12px;">
-                <strong>Bank Details</strong><br/>
-                Bank: ${escapeHtml(bankDetails.bank)} &nbsp;|&nbsp; Account Name: ${escapeHtml(bankDetails.accountName)}<br/>
-                Sort Code: ${escapeHtml(bankDetails.sortCode)} &nbsp;|&nbsp; Account No. ${escapeHtml(bankDetails.accountNo)}
+                ${paymentTerms ? `<div>Payment Terms: ${escapeHtml(paymentTerms)}</div>` : ''}
+                ${paymentMethod ? `<div>Payment Method: ${escapeHtml(paymentMethod)}</div>` : ''}
+                <div>Bank: ${escapeHtml(bankDetails.bank)} | Account Name: ${escapeHtml(bankDetails.accountName)}</div>
+                <div>Sort Code: ${escapeHtml(bankDetails.sortCode)} | Account No. ${escapeHtml(bankDetails.accountNo)}</div>
               </div>
               <div class="thanks">Thank you for your business</div>
               <div class="thanks" style="margin-top: 6px;">Company No. ${companyNumber}</div>
@@ -1004,6 +1325,8 @@ export default function Home() {
     invoiceDate,
     dueDate,
     vatNumber,
+    paymentTerms,
+    paymentMethod,
     hourRate,
     minRate,
     mileageRate,
@@ -1011,6 +1334,7 @@ export default function Home() {
     owed,
     venue,
     language,
+    letterheadStyle,
   ]);
 
   function escapeHtml(str: string): string {
@@ -1047,6 +1371,7 @@ export default function Home() {
             </select>
             <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Remittance Advice shows what was paid. Invoice shows what is owed.</p>
           </div>
+
 
           {/* Client */}
           <div className="mb-4">
@@ -1417,7 +1742,7 @@ export default function Home() {
               </div>
             </div>
             <div className="text-right mt-3 font-semibold">
-              {docType === 'remittance' ? 'Total GBP paid' : 'Total'}: {(docType === 'remittance' ? (amountPaid > 0 ? amountPaid : total) : total).toFixed(2)}
+              {docType === 'remittance' ? 'Total GBP paid' : 'Amount Due'}: {(docType === 'remittance' ? (amountPaid > 0 ? amountPaid : total) : total).toFixed(2)}
             </div>
           </div>
 
@@ -1448,6 +1773,35 @@ export default function Home() {
             )}
           </div>
           )}
+
+          {/* Payment terms/method (both doc types) */}
+          <div className="mt-4">
+            <h3 className="font-medium mb-1">Payment Terms</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm mb-1">Terms</label>
+                <input
+                  type="text"
+                  className="w-full p-2 rounded"
+                  style={{ border: '1px solid #d1d5db' }}
+                  value={paymentTerms}
+                  onChange={(e) => setPaymentTerms(e.target.value)}
+                  placeholder="e.g. Net 30, late fee 2%/mo"
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">Preferred Payment Method</label>
+                <input
+                  type="text"
+                  className="w-full p-2 rounded"
+                  style={{ border: '1px solid #d1d5db' }}
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  placeholder="e.g. Bank transfer"
+                />
+              </div>
+            </div>
+          </div>
 
           {(() => {
             const downloadLabel = docType === 'remittance' ? 'Download Remittance PDF' : 'Download Invoice PDF';
@@ -1504,6 +1858,8 @@ export default function Home() {
               setInvoiceDate('');
               setDueDate('');
               setVatNumber('');
+              setPaymentTerms('');
+              setPaymentMethod('');
               setDocType('remittance');
               setHourRate(20);
               setMinRate(5);
@@ -1513,6 +1869,7 @@ export default function Home() {
               setAmountPaid(0);
               setVenue('');
               setLanguage('');
+              setLetterheadStyle('none');
               try { localStorage.removeItem('jl-invoice-state'); } catch {}
             }}
             className="w-full py-3 rounded font-medium mt-2"
