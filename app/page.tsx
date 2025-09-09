@@ -18,6 +18,13 @@ export default function Home() {
   };
   
   const companyNumber = '15333696';
+  const companyPhone = '+44 7708 580413';
+  const bankDetails = {
+    bank: 'Santander',
+    accountName: 'Jambo Linguists Limited',
+    sortCode: '09-01-29',
+    accountNo: '96610174',
+  };
 
   const [client, setClient] = useState<Client>({ name: '', address: '', email: '' });
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
@@ -29,6 +36,8 @@ export default function Home() {
   const [invoiceDate, setInvoiceDate] = useState<string>('');
   const [dueDate, setDueDate] = useState<string>('');
   const [vatNumber, setVatNumber] = useState<string>('');
+  const [venue, setVenue] = useState<string>('');
+  const [language, setLanguage] = useState<string>('');
 
   const [docType, setDocType] = useState<'invoice' | 'remittance'>('remittance');
   // Single simple payment amount used everywhere
@@ -37,6 +46,9 @@ export default function Home() {
   const [hourRate, setHourRate] = useState<number>(20);
   const [minRate, setMinRate] = useState<number>(5);
   const [mileageRate, setMileageRate] = useState<number>(0.35);
+  // Travel time (invoice only)
+  const [travelTimeHours, setTravelTimeHours] = useState<number>(0);
+  const [travelTimeRate, setTravelTimeRate] = useState<number>(0);
 
   // Use the bundled logo asset
   const logoSrc = '/logo-purple.jpeg';
@@ -68,10 +80,14 @@ export default function Home() {
         if (parsed.invoiceDate) setInvoiceDate(parsed.invoiceDate);
         if (parsed.dueDate) setDueDate(parsed.dueDate);
         if (parsed.vatNumber) setVatNumber(parsed.vatNumber);
+        if (parsed.venue) setVenue(parsed.venue);
+        if (parsed.language) setLanguage(parsed.language);
         if (parsed.docType) setDocType(parsed.docType);
         if (typeof parsed.hourRate === 'number') setHourRate(parsed.hourRate);
         if (typeof parsed.minRate === 'number') setMinRate(parsed.minRate);
         if (typeof parsed.mileageRate === 'number') setMileageRate(parsed.mileageRate);
+        if (typeof parsed.travelTimeHours === 'number') setTravelTimeHours(parsed.travelTimeHours);
+        if (typeof parsed.travelTimeRate === 'number') setTravelTimeRate(parsed.travelTimeRate);
         if (typeof parsed.amountPaid === 'number') setAmountPaid(parsed.amountPaid);
       }
     } catch {}
@@ -92,12 +108,16 @@ export default function Home() {
       hourRate,
       minRate,
       mileageRate,
+      travelTimeHours,
+      travelTimeRate,
       amountPaid,
+      venue,
+      language,
     };
     try {
       localStorage.setItem('jl-invoice-state', JSON.stringify(state));
     } catch {}
-  }, [client, invoiceNumber, generalItems, invoiceItems, taxIncluded, taxRate, invoiceDate, dueDate, vatNumber, docType, hourRate, minRate, mileageRate, amountPaid]);
+  }, [client, invoiceNumber, generalItems, invoiceItems, taxIncluded, taxRate, invoiceDate, dueDate, vatNumber, docType, hourRate, minRate, mileageRate, travelTimeHours, travelTimeRate, amountPaid, venue, language]);
 
   const handleInvoiceItemChange: {
     (index: number, field: 'refNo' | 'date' | 'startTime' | 'finishTime', value: string): void;
@@ -196,7 +216,6 @@ export default function Home() {
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(14);
     const infoX = margin + (logoDataUrl ? logoW + 6 : 0);
-    pdf.text(company.name, infoX, y + 6);
   
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
@@ -213,11 +232,10 @@ export default function Home() {
       return lines;
     };
   
-    let cy = y + 11;
+    let cy = y + 6;
     for (const line of wrap(company.address, 70)) { pdf.text(line, infoX, cy); cy += 5; }
+    pdf.text(`Tel: ${companyPhone}`, infoX, cy); cy += 5;
     pdf.text(company.email, infoX, cy);
-    cy += 5;
-    pdf.text(`Company No. ${companyNumber}`, infoX, cy);
   
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(18);
@@ -233,6 +251,8 @@ export default function Home() {
     pdf.setFillColor(accent.r, accent.g, accent.b);
     pdf.rect(margin, headerBottom, pageWidth - margin * 2, 1.5, 'F');
     y = headerBottom + 8;
+
+    // (Bank details moved near totals/footer)
   
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(12);
@@ -240,40 +260,88 @@ export default function Home() {
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
     y += 6;
-    if (client.name) { pdf.text(client.name, margin, y); y += 5; }
-    if (client.address) { for (const line of wrap(client.address, pageWidth - margin * 2)) { pdf.text(line, margin, y); y += 5; } }
-    if (client.email) { pdf.text(client.email, margin, y); y += 6; }
+    if (client.name) {
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(client.name, margin, y);
+      pdf.setFont('helvetica', 'normal');
+      y += 5;
+    }
+    // Address (multi-line, no label)
+    if (client.address) {
+      pdf.setFont('helvetica', 'normal');
+      const maxW = pageWidth - margin * 2;
+      for (const addrLine of splitMultiline(client.address)) {
+        const parts = wrap(addrLine, maxW);
+        for (const line of parts) { pdf.text(line, margin, y); y += 5; }
+      }
+    }
+    // Inline label-value pairs for Email, Venue, Language
+    const drawInline = (label: string, value: string) => {
+      if (!value) return;
+      pdf.setFont('helvetica', 'bold');
+      const labelText = `${label}:`;
+      pdf.text(labelText, margin, y);
+      const labelW = pdf.getTextWidth(labelText + ' ');
+      pdf.setFont('helvetica', 'normal');
+      const maxW = pageWidth - margin * 2 - labelW;
+      const parts = wrap(value, maxW);
+      if (parts.length > 0) {
+        pdf.text(parts[0], margin + labelW, y);
+        for (let i = 1; i < parts.length; i++) { y += 5; pdf.text(parts[i], margin + labelW, y); }
+      }
+      y += 6;
+    };
+    drawInline('Email', client.email || '');
+    drawInline('Venue', venue || '');
+    drawInline('Language', language || '');
+    // Ensure upcoming table header won't overflow current page
+    const upcomingHeaderHeight = 8 + 12; // header bar + spacing before rows
+    if (y + upcomingHeaderHeight + margin > pageHeight) {
+      pdf.addPage();
+      y = margin;
+    }
   
+    // Travel time now shown as a table column (not a separate line)
+
     // Table
-    const colWidths = [28, 24, 25, 25, 33, 45, 45, 28];
+    // Added an extra column for Travel Time
+    const colWidths = [26, 22, 23, 23, 32, 40, 40, 34, 28];
     const colPositions = colWidths.reduce<number[]>((acc, w, i) => {
       acc.push((i === 0 ? margin : acc[i - 1] + colWidths[i - 1]));
       return acc;
     }, []);
-    const headers = ['Ref No', 'Date', 'Start Time', 'Finish Time', `Hours x £${hourRate}`, `Mins (15min incr) x £${minRate}`, `Miles x £${mileageRate}`, 'Amount Due £'];
+    const headers = ['Description', 'Date', 'Start Time', 'Finish Time', `Hours x £${hourRate}`, `Mins (15min incr) x £${minRate}`, `Miles x £${mileageRate}`, `Travel Time x £${travelTimeRate}`, 'Amount Due £'];
   
+    const headerH = 12;
     pdf.setFillColor(headerFill.r, headerFill.g, headerFill.b);
-    pdf.rect(margin, y, pageWidth - margin * 2, 8, 'F');
+    pdf.rect(margin, y, pageWidth - margin * 2, headerH, 'F');
     pdf.setDrawColor(borderLight.r, borderLight.g, borderLight.b);
-    pdf.rect(margin, y, pageWidth - margin * 2, 8);
-  
+    pdf.rect(margin, y, pageWidth - margin * 2, headerH);
+
     pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(11);
+    pdf.setFontSize(10);
     headers.forEach((text, i) => {
       const alignRight = i === headers.length - 1;
-      pdf.text(String(text), alignRight ? colPositions[i] + colWidths[i] - 2 : colPositions[i] + 2, y + 5, { align: alignRight ? 'right' : 'left' });
+      const maxW = colWidths[i] - 4;
+      const lines = wrap(String(text), maxW).slice(0, 2);
+      const baseX = alignRight ? colPositions[i] + colWidths[i] - 2 : colPositions[i] + 2;
+      const firstY = y + 4;
+      const secondY = y + 8;
+      if (lines[0]) pdf.text(lines[0], baseX, firstY, { align: alignRight ? 'right' : 'left' });
+      if (lines[1]) pdf.text(lines[1], baseX, secondY, { align: alignRight ? 'right' : 'left' });
     });
-  
+
     let colLineX = margin;
     colWidths.forEach(w => {
-      pdf.line(colLineX, y, colLineX, y + 8);
+      pdf.line(colLineX, y, colLineX, y + headerH);
       colLineX += w;
     });
-    pdf.line(colLineX, y, colLineX, y + 8);
-    y += 12; // add a touch more space before body rows
+    pdf.line(colLineX, y, colLineX, y + headerH);
+    y += headerH + 4; // add a touch more space before body rows
   
     pdf.setFont('helvetica', 'normal');
     const rowHeight = 7;
+    const extraLineHeight = 5; // additional height per wrapped line
     const rowPadding = 2;
     const tableRight = pageWidth - margin;
   
@@ -281,13 +349,22 @@ export default function Home() {
       const it = invoiceItems[i];
       const { hours, remMin, hourCharge, minCharge, mileCharge, amount } = calculateInvoiceItemAmounts(it);
   
-      if (y + rowHeight + margin + 20 > pageHeight) { pdf.addPage(); y = margin; }
+      // Compute wrapped lines for Description (no word breaking)
+      const descMaxW = colWidths[0] - 4;
+      const descLines = wrap(it.refNo || '', descMaxW);
+      const rh = rowHeight + Math.max(0, descLines.length - 1) * extraLineHeight;
+
+      if (y + rh + margin + 20 > pageHeight) { pdf.addPage(); y = margin; }
   
       if (i % 2 === 0) {
         pdf.setFillColor(rowLight.r, rowLight.g, rowLight.b);
-        pdf.rect(margin, y - rowPadding, pageWidth - margin * 2, rowHeight + rowPadding * 2, 'F');
+        pdf.rect(margin, y - rowPadding, pageWidth - margin * 2, rh + rowPadding * 2, 'F');
       }
   
+      const travelColValue = (i === 0 && travelAmount > 0)
+        ? `${travelTimeHours} x £${travelTimeRate} = ${formatCurrency(travelAmount)}`
+        : '';
+
       const rowValues = [
         it.refNo || '',
         formatDateUK(it.date),
@@ -296,25 +373,52 @@ export default function Home() {
         `${hours} x £${hourRate} = ${formatCurrency(hourCharge)}`,
         `${remMin} mins (${Math.ceil(remMin / 15)} incr) = ${formatCurrency(minCharge)}`,
         `${it.mileage} miles = ${formatCurrency(mileCharge)}`,
+        travelColValue,
         formatCurrency(amount)
       ];
-  
+      // Prevent overlap: fit text within column width (truncate with ellipsis if needed)
+      const fitText = (text: string, maxWidth: number) => {
+        let s = String(text || '');
+        if (pdf.getTextWidth(s) <= maxWidth) return s;
+        const ellipsis = '…';
+        let low = 0, high = s.length;
+        while (low < high) {
+          const mid = Math.floor((low + high) / 2);
+          const candidate = s.slice(0, mid) + ellipsis;
+          if (pdf.getTextWidth(candidate) <= maxWidth) low = mid + 1; else high = mid;
+        }
+        const cut = Math.max(0, low - 1);
+        return s.slice(0, cut) + ellipsis;
+      };
+
       rowValues.forEach((val, idx) => {
         const alignRight = idx === rowValues.length - 1;
-        pdf.text(String(val), alignRight ? colPositions[idx] + colWidths[idx] - 2 : colPositions[idx] + 2, y, { align: alignRight ? 'right' : 'left' });
+        const x = alignRight ? colPositions[idx] + colWidths[idx] - 2 : colPositions[idx] + 2;
+        const maxW = colWidths[idx] - 4; // padding
+        if (idx === 0) {
+          // Description: draw wrapped lines without breaking words
+          for (let li = 0; li < descLines.length; li++) {
+            const lineY = y + li * extraLineHeight;
+            const out = fitText(descLines[li], maxW);
+            pdf.text(out, x, lineY, { align: 'left' });
+          }
+        } else {
+          const out = fitText(String(val), maxW);
+          pdf.text(out, x, y, { align: alignRight ? 'right' : 'left' });
+        }
       });
   
       pdf.setDrawColor(borderLight.r, borderLight.g, borderLight.b);
-      pdf.line(margin, y + rowHeight, tableRight, y + rowHeight);
+      pdf.line(margin, y + rh, tableRight, y + rh);
   
       colLineX = margin;
       colWidths.forEach(w => {
-        pdf.line(colLineX, y - rowPadding, colLineX, y + rowHeight);
+        pdf.line(colLineX, y - rowPadding, colLineX, y + rh);
         colLineX += w;
       });
-      pdf.line(colLineX, y - rowPadding, colLineX, y + rowHeight);
+      pdf.line(colLineX, y - rowPadding, colLineX, y + rh);
   
-      y += rowHeight;
+      y += rh;
     }
   
     // Totals box
@@ -346,9 +450,27 @@ export default function Home() {
 
     // No amount owed shown on invoice; remittance handles payments
   
+    // Bank details below totals (common placement)
+    let bankBlockY = boxY + boxH + 10;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.text('Bank Details', pageWidth / 2, bankBlockY, { align: 'center' });
     pdf.setFont('helvetica', 'normal');
-    pdf.text('Thank you for your business', pageWidth / 2, boxY + boxH + 12, { align: 'center' });
+    pdf.setFontSize(10);
+    bankBlockY += 6;
+    pdf.text(`Bank: ${bankDetails.bank}`, pageWidth / 2, bankBlockY, { align: 'center' }); bankBlockY += 5;
+    pdf.text(`Account Name: ${bankDetails.accountName}`, pageWidth / 2, bankBlockY, { align: 'center' }); bankBlockY += 5;
+    pdf.text(`Sort Code: ${bankDetails.sortCode}`, pageWidth / 2, bankBlockY, { align: 'center' }); bankBlockY += 5;
+    pdf.text(`Account No. ${bankDetails.accountNo}`, pageWidth / 2, bankBlockY, { align: 'center' });
+    
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('Thank you for your business', pageWidth / 2, bankBlockY + 10, { align: 'center' });
   
+    // Footer company number
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.text(`Company No. ${companyNumber}`, pageWidth / 2, pageHeight - 6, { align: 'center' });
+
     const fileSuffix = invoiceNumber ? `-${invoiceNumber}` : `-${new Date().toISOString().split('T')[0]}`;
     pdf.save(`invoice${fileSuffix}.pdf`);
   };
@@ -405,19 +527,14 @@ export default function Home() {
 
     // Company name and address on the right, below header row
     let companyY = headerBottom + 6;
-    pdf.setFont('helvetica', 'bold');
-    pdf.setFontSize(12);
-    pdf.text('Jambo Linguists', rightX, companyY, { align: 'right' });
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
-    companyY += 6;
     const rightLines = [
-      'Jambo Linguists',
       'First Floor, Radley House,',
       'Richardshaw Road, Pudsey,',
       'West Yorkshire, LS28 6LE',
       'United Kingdom',
-      `Company No. ${companyNumber}`,
+      `Tel: ${companyPhone}`,
     ];
     for (const line of rightLines) { pdf.text(line, rightX, companyY, { align: 'right' }); companyY += 5; }
 
@@ -464,7 +581,7 @@ export default function Home() {
     pdf.rect(margin, hrY, pageWidth - margin * 2, 1.5, 'F');
     const paidTotal = amountPaid > 0 ? amountPaid : total;
 
-    // Table headers styled like HTML preview
+    // Table headers styled like HTML preview (bank details moved to footer)
     const tblY = hrY + 16;
     const colDesc = margin;
     const colInvTotal = pageWidth - margin - 80;
@@ -573,10 +690,28 @@ export default function Home() {
       pdf.setTextColor(textDark.r, textDark.g, textDark.b);
     }
 
+    // Bank details near footer (common placement)
+    let bankY = totalsY + totalsBoxH + 10;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.text('Bank Details', pageWidth / 2, bankY, { align: 'center' });
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    bankY += 6;
+    pdf.text(`Bank: ${bankDetails.bank}`, pageWidth / 2, bankY, { align: 'center' }); bankY += 5;
+    pdf.text(`Account Name: ${bankDetails.accountName}`, pageWidth / 2, bankY, { align: 'center' }); bankY += 5;
+    pdf.text(`Sort Code: ${bankDetails.sortCode}`, pageWidth / 2, bankY, { align: 'center' }); bankY += 5;
+    pdf.text(`Account No. ${bankDetails.accountNo}`, pageWidth / 2, bankY, { align: 'center' });
+
     // Footer note
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(10);
-    pdf.text('Thank you for your business', pageWidth / 2, totalsY + totalsBoxH + 12, { align: 'center' });
+    pdf.text('Thank you for your business', pageWidth / 2, bankY + 10, { align: 'center' });
+
+    // Footer company number
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.text(`Company No. ${companyNumber}`, pageWidth / 2, pageHeight - 6, { align: 'center' });
 
     const fileSuffix = invoiceNumber ? `-remittance-${invoiceNumber}` : `-remittance-${new Date().toISOString().split('T')[0]}`;
     pdf.save(`remittance${fileSuffix}.pdf`);
@@ -603,12 +738,17 @@ export default function Home() {
     }
   }
 
+  const travelAmount = useMemo(() => {
+    if (docType !== 'invoice') return 0;
+    return roundCurrency(Math.max(0, travelTimeHours) * Math.max(0, travelTimeRate));
+  }, [docType, travelTimeHours, travelTimeRate]);
+
   const subTotal = useMemo(() => {
     const base = docType === 'remittance'
       ? generalItems.reduce((sum, item) => sum + item.quantity * item.rate, 0)
-      : invoiceItems.reduce((sum, item) => sum + calculateInvoiceItemAmounts(item).amount, 0);
+      : invoiceItems.reduce((sum, item) => sum + calculateInvoiceItemAmounts(item).amount, 0) + travelAmount;
     return roundCurrency(base);
-  }, [docType, generalItems, invoiceItems]);
+  }, [docType, generalItems, invoiceItems, travelAmount]);
 
   const tax = useMemo(() => {
     const value = taxIncluded ? (subTotal * taxRate) / 100 : 0;
@@ -660,10 +800,9 @@ export default function Home() {
     const f = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' });
 
     const companyHtml = `
-      <h1>${escapeHtml(company.name)}</h1>
       <p>${escapeHtml(company.address)}</p>
+      <p>Tel: ${escapeHtml(companyPhone)}</p>
       <p>${escapeHtml(company.email)}</p>
-      <p>Company No. ${companyNumber}</p>
     `;
 
     const clientHtml = `
@@ -677,12 +816,11 @@ export default function Home() {
       const rightBlock = `
         <div style="text-align:right">
           <img src="${logoSrc}" class="logo" alt="logo" />
-          <h2 style="margin-top:6px">Jambo Linguists</h2>
           <p>First Floor, Radley House,</p>
           <p>Richardshaw Road, Pudsey,</p>
           <p>West Yorkshire, LS28 6LE</p>
           <p>United Kingdom</p>
-          <p>Company No. ${companyNumber}</p>
+          <p>Tel: ${escapeHtml(companyPhone)}</p>
         </div>`;
       const leftBlock = `
         <div>
@@ -755,6 +893,7 @@ export default function Home() {
                 ${paidTotal < total ? `<div class=\"totals-row\"><span><strong>Remaining Balance</strong></span><span><strong>${f.format(remaining)}</strong></span></div>` : ''}
               </div>
               <div class="thanks">Thank you for your business</div>
+              <div class="thanks" style="margin-top: 6px;">Company No. ${companyNumber}</div>
             </div>
           </body>
         </html>`;
@@ -763,8 +902,11 @@ export default function Home() {
       const amountColHeader = 'Amount Due £';
       const itemsRows = invoiceItems
         .map(
-          (it) => {
+          (it, idx) => {
             const { hours, remMin, hourCharge, minCharge, mileCharge, amount } = calculateInvoiceItemAmounts(it);
+            const travelCell = (idx === 0 && travelAmount > 0)
+              ? `${travelTimeHours} x £${travelTimeRate} = ${f.format(travelAmount)}`
+              : '';
             return `
             <tr>
               <td>${escapeHtml(it.refNo || '')}</td>
@@ -774,6 +916,7 @@ export default function Home() {
               <td>${hours} x £${hourRate} = ${f.format(hourCharge)}</td>
               <td>${remMin} mins (${Math.ceil(remMin / 15)} incr) x £${minRate} = ${f.format(minCharge)}</td>
               <td>${it.mileage} miles x £${mileageRate} = ${f.format(mileCharge)}</td>
+              <td>${travelCell}</td>
               <td class="right">${f.format(amount)}</td>
             </tr>`;
           }
@@ -783,6 +926,12 @@ export default function Home() {
       const subtotalStr = f.format(subTotal);
       const taxStr = f.format(tax);
       const totalStr = f.format(total);
+
+      const jobDetailsHtml = `
+        <div style="margin-top: 8px;">
+          ${venue ? `<p><strong>Venue</strong>: ${escapeHtml(venue)}</p>` : ''}
+          ${language ? `<p><strong>Language</strong>: ${escapeHtml(language)}</p>` : ''}
+        </div>`;
 
       return `
         <!doctype html>
@@ -803,17 +952,23 @@ export default function Home() {
                 </div>
               </div>
               <div class="accent"></div>
-              <div style="margin-top: 12px;">${clientHtml}</div>
+              <div style="text-align:center; margin: 8px 0 12px 0; font-size: 12px;">
+                <strong>Bank Details</strong><br/>
+                Bank: ${escapeHtml(bankDetails.bank)} &nbsp;|&nbsp; Account Name: ${escapeHtml(bankDetails.accountName)}<br/>
+                Sort Code: ${escapeHtml(bankDetails.sortCode)} &nbsp;|&nbsp; Account No. ${escapeHtml(bankDetails.accountNo)}
+              </div>
+              <div style="margin-top: 12px;">${clientHtml}${jobDetailsHtml}</div>
               <table>
                 <thead>
                   <tr>
-                    <th style="text-align:left;">Ref No</th>
+                    <th style="text-align:left;">Description</th>
                     <th style="text-align:left;">Date</th>
                     <th style="text-align:left;">Start Time</th>
                     <th style="text-align:left;">Finish Time</th>
                     <th style="text-align:left;">Duration hours x £${hourRate}</th>
                     <th style="text-align:left;">Duration minutes x £${minRate} every 15 min</th>
                     <th style="text-align:left;">Mileage £${mileageRate} per mile</th>
+                    <th style="text-align:left;">Travel Time x £${travelTimeRate}</th>
                     <th class="right">${amountColHeader}</th>
                   </tr>
                 </thead>
@@ -826,7 +981,13 @@ export default function Home() {
                 ${taxIncluded ? `<div class="totals-row"><span>VAT (${taxRate}%)</span><span>${taxStr}</span></div>` : ''}
                 <div class="totals-row total"><span>Total</span><span>${totalStr}</span></div>
               </div>
+              <div style="text-align:center; margin: 14px 0 4px 0; font-size: 12px;">
+                <strong>Bank Details</strong><br/>
+                Bank: ${escapeHtml(bankDetails.bank)} &nbsp;|&nbsp; Account Name: ${escapeHtml(bankDetails.accountName)}<br/>
+                Sort Code: ${escapeHtml(bankDetails.sortCode)} &nbsp;|&nbsp; Account No. ${escapeHtml(bankDetails.accountNo)}
+              </div>
               <div class="thanks">Thank you for your business</div>
+              <div class="thanks" style="margin-top: 6px;">Company No. ${companyNumber}</div>
             </div>
           </body>
         </html>
@@ -852,6 +1013,8 @@ export default function Home() {
     mileageRate,
     amountPaid,
     owed,
+    venue,
+    language,
   ]);
 
   function escapeHtml(str: string): string {
@@ -1022,6 +1185,30 @@ export default function Home() {
                     step="0.01"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm mb-1">Travel Time (hours)</label>
+                  <input
+                    type="number"
+                    value={travelTimeHours}
+                    onChange={(e) => setTravelTimeHours(Number(e.target.value))}
+                    className="w-full p-2 rounded"
+                    style={{ border: '1px solid #d1d5db' }}
+                    min={0}
+                    step="0.1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1">Travel Time Rate (£/hour)</label>
+                  <input
+                    type="number"
+                    value={travelTimeRate}
+                    onChange={(e) => setTravelTimeRate(Number(e.target.value))}
+                    className="w-full p-2 rounded"
+                    style={{ border: '1px solid #d1d5db' }}
+                    min={0}
+                    step="0.01"
+                  />
+                </div>
                 
               </div>
             )}
@@ -1118,7 +1305,7 @@ export default function Home() {
                         type="text"
                         id={`refno-${index}`}
                         className="peer w-full border rounded p-2 placeholder-transparent focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        placeholder="Ref No"
+                        placeholder="Description"
                         value={it.refNo}
                         onChange={(e) => handleInvoiceItemChange(index, "refNo", e.target.value)}
                       />
@@ -1126,7 +1313,7 @@ export default function Home() {
                         htmlFor={`refno-${index}`}
                         className="absolute left-2 -top-2.5 bg-white px-1 text-xs text-gray-500 peer-placeholder-shown:top-2 peer-placeholder-shown:text-gray-400 peer-placeholder-shown:text-sm transition-all"
                       >
-                        Ref No
+                        Description
                       </label>
                     </div>
                     <div className="col-span-2 relative">
@@ -1281,6 +1468,35 @@ export default function Home() {
               </button>
             );
           })()}
+          {docType === 'invoice' && (
+          <div className="mt-3">
+            <h3 className="font-medium mb-1">Job details</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm mb-1">Venue</label>
+                <input
+                  type="text"
+                  className="w-full p-2 rounded"
+                  style={{ border: '1px solid #d1d5db' }}
+                  value={venue}
+                  onChange={(e) => setVenue(e.target.value)}
+                  placeholder="Location / address"
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">Language</label>
+                <input
+                  type="text"
+                  className="w-full p-2 rounded"
+                  style={{ border: '1px solid #d1d5db' }}
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  placeholder="e.g. English ↔️ Somali"
+                />
+              </div>
+            </div>
+          </div>
+          )}
           <button
             onClick={() => {
               setClient({ name: '', address: '', email: '' });
@@ -1296,7 +1512,11 @@ export default function Home() {
               setHourRate(20);
               setMinRate(5);
               setMileageRate(0.35);
+              setTravelTimeHours(0);
+              setTravelTimeRate(0);
               setAmountPaid(0);
+              setVenue('');
+              setLanguage('');
               try { localStorage.removeItem('jl-invoice-state'); } catch {}
             }}
             className="w-full py-3 rounded font-medium mt-2"
