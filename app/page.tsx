@@ -310,7 +310,7 @@ export default function Home() {
       acc.push((i === 0 ? margin : acc[i - 1] + colWidths[i - 1]));
       return acc;
     }, []);
-    const headers = ['Description', 'Date', 'Start Time', 'Finish Time', `Hours x £${hourRate}`, `Mins (15min incr) x £${minRate}`, `Miles x £${mileageRate}`, `Travel Time x £${travelTimeRate}`, 'Amount Due £'];
+    const headers = ['Description', 'Date', 'Start Time', 'Finish Time', `Hours x £${hourRate}`, `Mins (15min incr) x £${minRate}`, `Miles x £${mileageRate}`, `Travel Time x £${travelTimeRate}`, 'Total'];
   
     const headerH = 12;
     pdf.setFillColor(headerFill.r, headerFill.g, headerFill.b);
@@ -899,7 +899,7 @@ export default function Home() {
         </html>`;
     } else {
       // Invoice preview
-      const amountColHeader = 'Amount Due £';
+      const amountColHeader = 'Total';
       const itemsRows = invoiceItems
         .map(
           (it, idx) => {
@@ -952,11 +952,6 @@ export default function Home() {
                 </div>
               </div>
               <div class="accent"></div>
-              <div style="text-align:center; margin: 8px 0 12px 0; font-size: 12px;">
-                <strong>Bank Details</strong><br/>
-                Bank: ${escapeHtml(bankDetails.bank)} &nbsp;|&nbsp; Account Name: ${escapeHtml(bankDetails.accountName)}<br/>
-                Sort Code: ${escapeHtml(bankDetails.sortCode)} &nbsp;|&nbsp; Account No. ${escapeHtml(bankDetails.accountNo)}
-              </div>
               <div style="margin-top: 12px;">${clientHtml}${jobDetailsHtml}</div>
               <table>
                 <thead>
