@@ -6,7 +6,7 @@ import jsPDF from 'jspdf';
 type Company = { name: string; address: string; email: string };
 type Client = { name: string; address: string; email: string };
 type GeneralItem = { description: string; quantity: number; rate: number };
-type InvoiceItem = { refNo: string; date: string; startTime: string; finishTime: string; mileage: number };
+type InvoiceItem = { description: string; refNo: string; date: string; startTime: string; finishTime: string; mileage: number };
 
 export default function Home() {
   // Fixed company info (not editable)
@@ -18,7 +18,7 @@ export default function Home() {
   };
   
   const companyNumber = '15333696';
-  const companyPhone = '+44 7708 580413';
+  const companyPhone = '+447938065717';
   const bankDetails = {
     bank: 'Santander',
     accountName: 'Jambo Linguists Limited',
@@ -29,7 +29,7 @@ export default function Home() {
   const [client, setClient] = useState<Client>({ name: '', address: '', email: '' });
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [generalItems, setGeneralItems] = useState<GeneralItem[]>([{ description: '', quantity: 1, rate: 0 }]);
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([{ refNo: '', date: '', startTime: '', finishTime: '', mileage: 0 }]);
+  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([{ description: '', refNo: '', date: '', startTime: '', finishTime: '', mileage: 0 }]);
   const [taxIncluded, setTaxIncluded] = useState<boolean>(false);
   const [taxRate, setTaxRate] = useState<number>(20);
   
@@ -54,6 +54,8 @@ export default function Home() {
   // Travel time (invoice only)
   const [travelTimeHours, setTravelTimeHours] = useState<number>(0);
   const [travelTimeRate, setTravelTimeRate] = useState<number>(0);
+  // Minutes charging toggle (invoice only)
+  const [minutesEnabled, setMinutesEnabled] = useState<boolean>(false);
 
   // Use the bundled logo asset
   const logoSrc = '/logo-purple.jpeg';
@@ -79,7 +81,7 @@ export default function Home() {
         if (parsed.client) setClient(parsed.client);
         if (parsed.invoiceNumber) setInvoiceNumber(parsed.invoiceNumber);
         if (parsed.generalItems) setGeneralItems(parsed.generalItems);
-        if (parsed.invoiceItems) setInvoiceItems(parsed.invoiceItems);
+        if (parsed.invoiceItems) setInvoiceItems(parsed.invoiceItems.map((it: any) => ({ description: it.description ?? '', refNo: it.refNo ?? '', date: it.date ?? '', startTime: it.startTime ?? '', finishTime: it.finishTime ?? '', mileage: Number(it.mileage ?? 0) })));
         if (typeof parsed.taxIncluded === 'boolean') setTaxIncluded(parsed.taxIncluded);
         if (typeof parsed.taxRate === 'number') setTaxRate(parsed.taxRate);
         if (parsed.invoiceDate) setInvoiceDate(parsed.invoiceDate);
@@ -90,6 +92,11 @@ export default function Home() {
         if (parsed.venue) setVenue(parsed.venue);
         if (parsed.language) setLanguage(parsed.language);
         if (parsed.docType) setDocType(parsed.docType);
+        // If invoice number missing, set standby prefix
+        if (!parsed.invoiceNumber) {
+          setInvoiceNumber('JLL-');
+        }
+        if (typeof parsed.minutesEnabled === 'boolean') setMinutesEnabled(parsed.minutesEnabled);
         if (typeof parsed.hourRate === 'number') setHourRate(parsed.hourRate);
         if (typeof parsed.minRate === 'number') setMinRate(parsed.minRate);
         if (typeof parsed.mileageRate === 'number') setMileageRate(parsed.mileageRate);
@@ -97,6 +104,16 @@ export default function Home() {
         if (typeof parsed.travelTimeRate === 'number') setTravelTimeRate(parsed.travelTimeRate);
         if (typeof parsed.amountPaid === 'number') setAmountPaid(parsed.amountPaid);
         if (parsed.letterheadStyle) setLetterheadStyle(parsed.letterheadStyle);
+      }
+    } catch {}
+  }, []);
+
+  // On first load without any saved state, ensure an invoice number prefix exists
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('jl-invoice-state');
+      if (!saved) {
+        setInvoiceNumber((prev) => (prev && prev.trim().length > 0 ? prev : 'JLL-'));
       }
     } catch {}
   }, []);
@@ -124,6 +141,7 @@ export default function Home() {
       venue,
       language,
       letterheadStyle,
+      minutesEnabled,
     };
     try {
       localStorage.setItem('jl-invoice-state', JSON.stringify(state));
@@ -131,10 +149,11 @@ export default function Home() {
   }, [client, invoiceNumber, generalItems, invoiceItems, taxIncluded, taxRate, invoiceDate, dueDate, vatNumber, paymentTerms, paymentMethod, docType, hourRate, minRate, mileageRate, travelTimeHours, travelTimeRate, amountPaid, venue, language, letterheadStyle]);
 
   const handleInvoiceItemChange: {
-    (index: number, field: 'refNo' | 'date' | 'startTime' | 'finishTime', value: string): void;
+    (index: number, field: 'description' | 'refNo' | 'date' | 'startTime' | 'finishTime', value: string): void;
     (index: number, field: 'mileage', value: number): void;
-  } = (index: number, field: 'refNo' | 'date' | 'startTime' | 'finishTime' | 'mileage', value: string | number) => {
+  } = (index: number, field: 'description' | 'refNo' | 'date' | 'startTime' | 'finishTime' | 'mileage', value: string | number) => {
     const nextItems = [...invoiceItems];
+    if (field === 'description') nextItems[index].description = value as string;
     if (field === 'refNo') nextItems[index].refNo = value as string;
     if (field === 'date') nextItems[index].date = value as string;
     if (field === 'startTime') nextItems[index].startTime = value as string;
@@ -144,7 +163,7 @@ export default function Home() {
   };
 
   const addGeneralItem = () => setGeneralItems([...generalItems, { description: '', quantity: 1, rate: 0 }]);
-  const addInvoiceItem = () => setInvoiceItems([...invoiceItems, { refNo: '', date: '', startTime: '', finishTime: '', mileage: 0 }]);
+  const addInvoiceItem = () => setInvoiceItems([...invoiceItems, { description: '', refNo: '', date: '', startTime: '', finishTime: '', mileage: 0 }]);
 
   const removeGeneralItem = (index: number) => setGeneralItems(generalItems.filter((_, i) => i !== index));
   const removeInvoiceItem = (index: number) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
@@ -161,6 +180,8 @@ export default function Home() {
     return d.toLocaleDateString('en-GB');
   };
 
+  const toBlock = (value: string): string => (value || '').toUpperCase();
+
   const parseTime = (time: string): number => {
     if (!time) return 0;
     const [h, m] = time.split(':').map(Number);
@@ -171,7 +192,7 @@ export default function Home() {
     return Math.round((value + Number.EPSILON) * 100) / 100;
   };
 
-  const calculateInvoiceItemAmounts = (item: InvoiceItem, includeTravelTime: boolean = false) => {
+  const calculateInvoiceItemAmounts = (item: InvoiceItem, includeTravelTime: boolean = false, includeMinuteCharge: boolean = false) => {
     const startMin = parseTime(item.startTime);
     const finishMin = parseTime(item.finishTime);
     let durationMin = 0;
@@ -187,7 +208,8 @@ export default function Home() {
     const remMin = durationMin % 60;
     const hourCharge = roundCurrency(hours * hourRate);
     const minIncrements = Math.ceil(remMin / 15);
-    const minCharge = roundCurrency(minIncrements * minRate);
+    const minChargeRaw = roundCurrency(minIncrements * minRate);
+    const minCharge = includeMinuteCharge ? minChargeRaw : 0;
     const mileCharge = roundCurrency(item.mileage * mileageRate);
     const travelCharge = includeTravelTime ? roundCurrency(travelTimeHours * travelTimeRate) : 0;
     const amount = roundCurrency(hourCharge + minCharge + mileCharge + travelCharge);
@@ -235,7 +257,7 @@ export default function Home() {
     const logoDataUrl = await getDataUrl(logoSrc);
     y = renderLetterhead(pdf, pageWidth, margin, y, logoDataUrl);
     
-    // Helper function for text wrapping
+    // Helper function for text wrapping (word-aware)
     const wrap = (text: string, maxWidth: number) => {
       const words = (text || '').split(' ');
       const lines: string[] = [];
@@ -243,6 +265,30 @@ export default function Home() {
       for (const w of words) {
         const test = line ? line + ' ' + w : w;
         if (pdf.getTextWidth(test) > maxWidth) { if (line) lines.push(line); line = w; } else { line = test; }
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+    // Hyphen-aware wrapper for IDs like LST-RBH-080925-SWA (splits after '-')
+    const wrapHyphenAware = (text: string, maxWidth: number) => {
+      const tokens = String(text || '').split(/(?<=-)|\s+/).filter(Boolean);
+      const lines: string[] = [];
+      let line = '';
+      for (const t of tokens) {
+        const test = line ? line + t : t;
+        if (pdf.getTextWidth(test) > maxWidth) { if (line) lines.push(line); line = t; } else { line = test; }
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+    // Slash-aware wrapper for dates like 08/09/2025 (splits after '/')
+    const wrapSlashAware = (text: string, maxWidth: number) => {
+      const tokens = String(text || '').split(/(?<=\/)|\s+/).filter(Boolean);
+      const lines: string[] = [];
+      let line = '';
+      for (const t of tokens) {
+        const test = line ? line + t : t;
+        if (pdf.getTextWidth(test) > maxWidth) { if (line) lines.push(line); line = t; } else { line = test; }
       }
       if (line) lines.push(line);
       return lines;
@@ -312,7 +358,7 @@ export default function Home() {
     y += 6;
     if (client.name) {
       pdf.setFont('helvetica', 'bold');
-      pdf.text(client.name, margin, y);
+      pdf.text(toBlock(client.name), margin, y);
       pdf.setFont('helvetica', 'normal');
       y += 5;
     }
@@ -355,18 +401,57 @@ export default function Home() {
 
     // Table
     // Build dynamic columns (omit minutes column if minute rate is not set)
-    const includeMinutes = minRate > 0;
-    const columns: { key: string; w: number; header: string; align?: 'left' | 'right' }[] = [
-      { key: 'desc', w: 26, header: 'Description' },
+    const includeMinutes = minutesEnabled && minRate > 0;
+    let columns: { key: string; w: number; header: string; align?: 'left' | 'right' }[] = [
+      { key: 'desc', w: 24, header: 'Description' },
+      { key: 'ref', w: 28, header: 'Ref No.' },
       { key: 'date', w: 22, header: 'Date' },
-      { key: 'start', w: 23, header: 'Start Time' },
-      { key: 'finish', w: 23, header: 'Finish Time' },
-      { key: 'hours', w: 32, header: `Hours x £${hourRate}` },
-      ...(includeMinutes ? [{ key: 'mins', w: 40, header: `Mins (15min incr) x £${minRate}` }] : []),
-      { key: 'miles', w: 40, header: `Miles x £${mileageRate}` },
-      { key: 'travel', w: 34, header: `Travel Time x £${travelTimeRate}` },
-      { key: 'amount', w: 28, header: 'Total', align: 'right' },
+      { key: 'start', w: 20, header: 'Start Time' },
+      { key: 'finish', w: 20, header: 'Finish Time' },
+      { key: 'hours', w: 36, header: `Hours x £${hourRate}` },
+      { key: 'miles', w: 30, header: `Miles x £${mileageRate}` },
+      { key: 'travel', w: 28, header: `Travel Time x £${travelTimeRate}` },
+      { key: 'amount', w: 22, header: 'Total', align: 'right' },
     ];
+    if (includeMinutes) {
+      // Insert minutes column and keep balanced widths
+      columns = [
+        { key: 'desc', w: 24, header: 'Description' },
+        { key: 'ref', w: 35, header: 'Ref No.' },
+        { key: 'date', w: 22, header: 'Date' },
+        { key: 'start', w: 18, header: 'Start Time' },
+        { key: 'finish', w: 18, header: 'Finish Time' },
+        { key: 'hours', w: 33, header: `Hours x £${hourRate}` },
+        { key: 'mins', w: 36, header: `Mins (15min incr) x £${minRate}` },
+        { key: 'miles', w: 26, header: `Miles x £${mileageRate}` },
+        { key: 'travel', w: 28, header: `Travel Time x £${travelTimeRate}` },
+        { key: 'amount', w: 22, header: 'Total', align: 'right' },
+      ];
+    } else {
+      // Redistribute the 32mm from the omitted minutes column across key columns
+      columns = columns.map(c => {
+        if (c.key === 'desc') return { ...c, w: c.w + 8 };
+        if (c.key === 'date') return { ...c, w: 20 };
+        if (c.key === 'ref') return { ...c, w: c.w + 9 };
+        if (c.key === 'hours') return { ...c, w: 33 };
+        if (c.key === 'miles') return { ...c, w: c.w + 4 };
+        if (c.key === 'start') return { ...c, w: 16 };
+        if (c.key === 'finish') return { ...c, w: 16 };
+        return c;
+      });
+      // Ensure travel is roughly equal to hours when minutes are off
+      columns = columns.map(c => (c.key === 'travel' ? { ...c, w: 34 } : c));
+      // Nudge amount down slightly to give date a little extra room
+      columns = columns.map(c => (c.key === 'amount' ? { ...c, w: Math.max(20, c.w - 2) } : c));
+    }
+
+    // Scale columns to fill available table width exactly
+    const availableTableW = pageWidth - margin * 2;
+    const currentTableW = columns.reduce((s, c) => s + c.w, 0);
+    if (currentTableW > 0) {
+      const scale = availableTableW / currentTableW;
+      columns = columns.map(c => ({ ...c, w: +(c.w * scale).toFixed(2) }));
+    }
 
     const colWidths = columns.map(c => c.w);
     const colPositions = colWidths.reduce<number[]>((acc, w, i) => {
@@ -414,12 +499,57 @@ export default function Home() {
   
     for (let i = 0; i < invoiceItems.length; i++) {
       const it = invoiceItems[i];
-      const { hours, remMin, hourCharge, minCharge, mileCharge, travelCharge, amount } = calculateInvoiceItemAmounts(it, true);
+      const { hours, remMin, hourCharge, minCharge, mileCharge, travelCharge, amount } = calculateInvoiceItemAmounts(it, true, includeMinutes);
   
       // Compute wrapped lines for Description (no word breaking)
       const descMaxW = colWidths[0] - 4;
-      const descLines = wrap(it.refNo || '', descMaxW);
-      const rh = rowHeight + Math.max(0, descLines.length - 1) * extraLineHeight;
+      const descLines = wrap(it.description || '', descMaxW);
+      // If minutes/ref/date/miles columns are included, compute their wrapped lines too for row height calculations
+      let minsLines: string[] = [];
+      const minsIndex = includeMinutes ? columns.findIndex(c => c.key === 'mins') : -1;
+      if (includeMinutes && minsIndex >= 0) {
+        const minsMaxW = colWidths[minsIndex] - 4;
+        const minsText = `${remMin} mins (${Math.ceil(remMin / 15)} incr) = ${formatCurrency(minCharge)}`;
+        minsLines = wrap(minsText, minsMaxW);
+      }
+      let refLines: string[] = [];
+      const refIndex = columns.findIndex(c => c.key === 'ref');
+      if (refIndex >= 0) {
+        const refMaxW = colWidths[refIndex] - 4;
+        refLines = wrapHyphenAware(it.refNo || '', refMaxW);
+      }
+      let dateLines: string[] = [];
+      const dateIndex = columns.findIndex(c => c.key === 'date');
+      if (dateIndex >= 0) {
+        const dateMaxW = colWidths[dateIndex] - 4;
+        const dateText = formatDateUK(it.date);
+        dateLines = wrapSlashAware(dateText, dateMaxW);
+      }
+      let milesLines: string[] = [];
+      const milesIndex = columns.findIndex(c => c.key === 'miles');
+      if (milesIndex >= 0) {
+        const milesMaxW = colWidths[milesIndex] - 4;
+        const milesText = `${it.mileage} miles = ${formatCurrency(mileCharge)}`;
+        milesLines = wrap(milesText, milesMaxW);
+      }
+      let travelLines: string[] = [];
+      const travelIndex = columns.findIndex(c => c.key === 'travel');
+      if (travelIndex >= 0) {
+        const travelMaxW = colWidths[travelIndex] - 4;
+        const travelText = travelCharge > 0
+          ? `${travelTimeHours} x £${travelTimeRate} = ${formatCurrency(travelCharge)}`
+          : '';
+        travelLines = wrap(travelText, travelMaxW);
+      }
+      const wrappedLinesCount = Math.max(
+        descLines.length,
+        minsLines.length || 1,
+        refLines.length || 1,
+        dateLines.length || 1,
+        milesLines.length || 1,
+        travelLines.length || 1
+      );
+      const rh = rowHeight + Math.max(0, wrappedLinesCount - 1) * extraLineHeight;
 
       if (y + rh + margin + 20 > pageHeight) { pdf.addPage(); y = margin; }
   
@@ -433,6 +563,7 @@ export default function Home() {
         : '';
 
       const rowValues = [
+        it.description || '',
         it.refNo || '',
         formatDateUK(it.date),
         it.startTime || '',
@@ -467,6 +598,42 @@ export default function Home() {
           for (let li = 0; li < descLines.length; li++) {
             const lineY = y + li * extraLineHeight;
             const out = fitText(descLines[li], maxW);
+            pdf.text(out, x, lineY, { align: 'left' });
+          }
+        } else if (includeMinutes && minsIndex === idx) {
+          // Minutes column: render wrapped lines
+          const lines = minsLines.length ? minsLines : [String(val)];
+          for (let li = 0; li < lines.length; li++) {
+            const lineY = y + li * extraLineHeight;
+            const out = fitText(lines[li], maxW);
+            pdf.text(out, x, lineY, { align: 'left' });
+          }
+        } else if (refIndex === idx) {
+          const lines = refLines.length ? refLines : [String(val)];
+          for (let li = 0; li < lines.length; li++) {
+            const lineY = y + li * extraLineHeight;
+            const out = fitText(lines[li], maxW);
+            pdf.text(out, x, lineY, { align: 'left' });
+          }
+        } else if (dateIndex === idx) {
+          const lines = dateLines.length ? dateLines : [String(val)];
+          for (let li = 0; li < lines.length; li++) {
+            const lineY = y + li * extraLineHeight;
+            const out = fitText(lines[li], maxW);
+            pdf.text(out, x, lineY, { align: 'left' });
+          }
+        } else if (milesIndex === idx) {
+          const lines = milesLines.length ? milesLines : [String(val)];
+          for (let li = 0; li < lines.length; li++) {
+            const lineY = y + li * extraLineHeight;
+            const out = fitText(lines[li], maxW);
+            pdf.text(out, x, lineY, { align: 'left' });
+          }
+        } else if (travelIndex === idx) {
+          const lines = travelLines.length ? travelLines : [String(val)];
+          for (let li = 0; li < lines.length; li++) {
+            const lineY = y + li * extraLineHeight;
+            const out = fitText(lines[li], maxW);
             pdf.text(out, x, lineY, { align: 'left' });
           }
         } else {
@@ -649,7 +816,7 @@ export default function Home() {
     if (client.name) {
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(10);
-      pdf.text(client.name, lx, ly);
+      pdf.text(toBlock(client.name), lx, ly);
       ly += 5;
     }
     pdf.setFont('helvetica', 'normal');
@@ -967,9 +1134,9 @@ export default function Home() {
   const subTotal = useMemo(() => {
     const base = docType === 'remittance'
       ? generalItems.reduce((sum, item) => sum + item.quantity * item.rate, 0)
-      : invoiceItems.reduce((sum, item) => sum + calculateInvoiceItemAmounts(item, true).amount, 0);
+      : invoiceItems.reduce((sum, item) => sum + calculateInvoiceItemAmounts(item, true, minutesEnabled).amount, 0);
     return roundCurrency(base);
-  }, [docType, generalItems, invoiceItems]);
+  }, [docType, generalItems, invoiceItems, minutesEnabled]);
 
   const tax = useMemo(() => {
     const value = taxIncluded ? (subTotal * taxRate) / 100 : 0;
@@ -1007,6 +1174,7 @@ export default function Home() {
         p { margin: 2px 0; font-size: 12px; line-height: 1.5; }
         table { width: 100%; border-collapse: collapse; margin-top: 12px; }
         th, td { padding: 10px 8px; font-size: 12px; vertical-align: top; }
+        .wrap-ref { word-break: break-word; overflow-wrap: anywhere; }
         thead tr { background: #f3f4f6; border: 1px solid #e5e7eb; }
         tbody tr { border-bottom: 1px solid #eef2f7; }
         tbody tr:nth-child(even) { background: #fafbfc; }
@@ -1124,7 +1292,7 @@ export default function Home() {
 
     const clientHtml = `
       <h2>Customer</h2>
-      <p><strong>${escapeHtml(client.name)}</strong></p>
+      <p><strong>${escapeHtml((client.name || '').toUpperCase())}</strong></p>
       <p>${escapeHtml(client.address)}</p>
       <p><strong>${escapeHtml(client.email)}</strong></p>
     `;
@@ -1142,7 +1310,7 @@ export default function Home() {
       const leftBlock = `
         <div>
           <h1>REMITTANCE ADVICE</h1>
-          <p>${escapeHtml(client.name)}</p>
+          <p>${escapeHtml((client.name || '').toUpperCase())}</p>
           <p>${escapeHtml(client.address)}</p>
           <p>${escapeHtml(client.email)}</p>
         </div>`;
@@ -1229,12 +1397,13 @@ export default function Home() {
               : '';
             return `
             <tr>
-              <td>${escapeHtml(it.refNo || '')}</td>
+              <td>${escapeHtml(it.description || '')}</td>
+              <td class="wrap-ref">${escapeHtml(it.refNo || '')}</td>
               <td>${formatDateUK(it.date)}</td>
               <td>${escapeHtml(it.startTime || '')}</td>
               <td>${escapeHtml(it.finishTime || '')}</td>
               <td>${hours} x £${hourRate} = ${f.format(hourCharge)}</td>
-              ${minRate > 0 ? `<td>${remMin} mins (${Math.ceil(remMin / 15)} incr) x £${minRate} = ${f.format(minCharge)}</td>` : ''}
+              ${minutesEnabled && minRate > 0 ? `<td>${remMin} mins (${Math.ceil(remMin / 15)} incr) x £${minRate} = ${f.format(minCharge)}</td>` : ''}
               <td>${it.mileage} miles x £${mileageRate} = ${f.format(mileCharge)}</td>
               <td>${travelCell}</td>
               <td class="right">${f.format(amount)}</td>
@@ -1278,13 +1447,14 @@ export default function Home() {
                 <thead>
                   <tr>
                     <th style="text-align:left;">Description</th>
+                    <th style="text-align:left;">Ref No.</th>
                     <th style="text-align:left;">Date</th>
-                    <th style="text-align:left;">Start Time</th>
-                    <th style="text-align:left;">Finish Time</th>
-                    <th style="text-align:left;">Duration hours x £${hourRate}</th>
-                    ${minRate > 0 ? `<th style="text-align:left;">Duration minutes x £${minRate} every 15 min</th>` : ''}
-                    <th style="text-align:left;">Mileage £${mileageRate} per mile</th>
-                    <th style="text-align:left;">Travel Time x £${travelTimeRate}</th>
+                    <th style="text-align:left;">Start</th>
+                    <th style="text-align:left;">Finish</th>
+                    <th style="text-align:left;">Hours x £${hourRate}</th>
+                    ${minutesEnabled && minRate > 0 ? `<th style=\"text-align:left;\">Mins x £${minRate} (15m)</th>` : ''}
+                    <th style="text-align:left;">Miles x £${mileageRate}</th>
+                    <th style="text-align:left;">Travel x £${travelTimeRate}</th>
                     <th class="right">${amountColHeader}</th>
                   </tr>
                 </thead>
@@ -1335,6 +1505,7 @@ export default function Home() {
     venue,
     language,
     letterheadStyle,
+    minutesEnabled,
   ]);
 
   function escapeHtml(str: string): string {
@@ -1494,6 +1665,16 @@ export default function Home() {
                     step="0.01"
                   />
                 </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={minutesEnabled}
+                      onChange={(e) => setMinutesEnabled(e.target.checked)}
+                    />
+                    Charge minutes (15 min increments)
+                  </label>
+                </div>
                 <div>
                   <label className="block text-sm mb-1">Mileage Rate (£ per mile)</label>
                   <input
@@ -1621,12 +1802,28 @@ export default function Home() {
                     key={index}
                     className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end border-b pb-3"
                   >
+                    <div className="col-span-3 relative">
+                      <input
+                        type="text"
+                        id={`desc-${index}`}
+                        className="peer w-full border rounded p-2 placeholder-transparent focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        placeholder="Description"
+                        value={it.description}
+                        onChange={(e) => handleInvoiceItemChange(index, "description", e.target.value)}
+                      />
+                      <label
+                        htmlFor={`desc-${index}`}
+                        className="absolute left-2 -top-2.5 bg-white px-1 text-xs text-gray-500 peer-placeholder-shown:top-2 peer-placeholder-shown:text-gray-400 peer-placeholder-shown:text-sm transition-all"
+                      >
+                        Description
+                      </label>
+                    </div>
                     <div className="col-span-2 relative">
                       <input
                         type="text"
                         id={`refno-${index}`}
                         className="peer w-full border rounded p-2 placeholder-transparent focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        placeholder="Description"
+                        placeholder="Ref No."
                         value={it.refNo}
                         onChange={(e) => handleInvoiceItemChange(index, "refNo", e.target.value)}
                       />
@@ -1634,7 +1831,7 @@ export default function Home() {
                         htmlFor={`refno-${index}`}
                         className="absolute left-2 -top-2.5 bg-white px-1 text-xs text-gray-500 peer-placeholder-shown:top-2 peer-placeholder-shown:text-gray-400 peer-placeholder-shown:text-sm transition-all"
                       >
-                        Description
+                        Ref No.
                       </label>
                     </div>
                     <div className="col-span-2 relative">
@@ -1652,7 +1849,7 @@ export default function Home() {
                         Date
                       </label>
                     </div>
-                    <div className="col-span-2 relative">
+                    <div className="col-span-1 relative">
                       <input
                         type="time"
                         id={`start-${index}`}
@@ -1667,7 +1864,7 @@ export default function Home() {
                         Start Time
                       </label>
                     </div>
-                    <div className="col-span-2 relative">
+                    <div className="col-span-1 relative">
                       <input
                         type="time"
                         id={`finish-${index}`}
@@ -1701,7 +1898,7 @@ export default function Home() {
                       </label>
                     </div>
                     <div className="col-span-1 text-right font-semibold">
-                      {calculateInvoiceItemAmounts(it).amount.toFixed(2)}
+                      {calculateInvoiceItemAmounts(it, true, minutesEnabled).amount.toFixed(2)}
                     </div>
                     <div className="col-span-1 flex justify-end">
                       {invoiceItems.length > 1 && (
@@ -1850,9 +2047,11 @@ export default function Home() {
           <button
             onClick={() => {
               setClient({ name: '', address: '', email: '' });
-              setInvoiceNumber('');
+              // set standby invoice number prefix on reset
+              setInvoiceNumber('JLL-');
               setGeneralItems([{ description: '', quantity: 1, rate: 0 }]);
-              setInvoiceItems([{ refNo: '', date: '', startTime: '', finishTime: '', mileage: 0 }]);
+              setInvoiceItems([{ description: '', refNo: '', date: '', startTime: '', finishTime: '', mileage: 0 }]);
+              setMinutesEnabled(false);
               setTaxIncluded(false);
               setTaxRate(20);
               setInvoiceDate('');
