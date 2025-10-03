@@ -958,16 +958,10 @@ export default function Home() {
       pdf.setTextColor(textDark.r, textDark.g, textDark.b);
     }
 
-    // Bank details near footer (common placement)
-    let bankY = totalsY + totalsBoxH + 10;
-    if (paymentTerms) { pdf.text(`Payment Terms: ${paymentTerms}`, margin, bankY); bankY += 5; }
-    if (paymentMethod) { pdf.text(`Payment Method: ${paymentMethod}`, margin, bankY); bankY += 7; }
-    pdf.setFont('helvetica', 'normal');
-    pdf.setFontSize(10);
-    const bankLine1 = `Bank: ${bankDetails.bank} | Account Name: ${bankDetails.accountName}`;
-    const bankLine2 = `Sort Code: ${bankDetails.sortCode} | Account No. ${bankDetails.accountNo}`;
-    pdf.text(bankLine1, pageWidth / 2, bankY, { align: 'center' }); bankY += 5;
-    pdf.text(bankLine2, pageWidth / 2, bankY, { align: 'center' });
+  // Footer placement for payment terms/method (bank details intentionally omitted)
+  let bankY = totalsY + totalsBoxH + 10;
+  if (paymentTerms) { pdf.text(`Payment Terms: ${paymentTerms}`, margin, bankY); bankY += 5; }
+  if (paymentMethod) { pdf.text(`Payment Method: ${paymentMethod}`, margin, bankY); bankY += 7; }
 
     // Footer note
     pdf.setFont('helvetica', 'normal');
@@ -1470,8 +1464,7 @@ export default function Home() {
               <div style="text-align:center; margin: 14px 0 4px 0; font-size: 12px;">
                 ${paymentTerms ? `<div>Payment Terms: ${escapeHtml(paymentTerms)}</div>` : ''}
                 ${paymentMethod ? `<div>Payment Method: ${escapeHtml(paymentMethod)}</div>` : ''}
-                <div>Bank: ${escapeHtml(bankDetails.bank)} | Account Name: ${escapeHtml(bankDetails.accountName)}</div>
-                <div>Sort Code: ${escapeHtml(bankDetails.sortCode)} | Account No. ${escapeHtml(bankDetails.accountNo)}</div>
+                <!-- Bank details intentionally omitted for remittance -->
               </div>
               <div class="thanks">Thank you for your business</div>
               <div class="thanks" style="margin-top: 6px;">Company No. ${companyNumber}</div>
