@@ -22,7 +22,7 @@ export default function Home() {
   const bankDetails = {
     bank: 'Santander',
     accountName: 'Jambo Linguists Limited',
-    sortCode: '09-01-29',
+    sortCode: '090129',
     accountNo: '96610194',
   };
 
