@@ -1793,9 +1793,12 @@ export default function Home() {
                 invoiceItems.map((it, index) => (
                   <div
                     key={index}
-                    className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end border-b pb-3"
+                    className="border rounded-lg p-3 bg-gray-50"
+                    style={{ borderColor: '#e5e7eb' }}
                   >
-                    <div className="col-span-3 relative">
+                    {/* First Row */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mb-3">
+                    <div className="sm:col-span-4 relative">
                       <input
                         type="text"
                         id={`desc-${index}`}
@@ -1811,7 +1814,7 @@ export default function Home() {
                         Description
                       </label>
                     </div>
-                    <div className="col-span-2 relative">
+                    <div className="sm:col-span-4 relative">
                       <input
                         type="text"
                         id={`refno-${index}`}
@@ -1827,7 +1830,7 @@ export default function Home() {
                         Ref No.
                       </label>
                     </div>
-                    <div className="col-span-2 relative">
+                    <div className="sm:col-span-3 relative">
                       <input
                         type="date"
                         id={`date-${index}`}
@@ -1842,7 +1845,16 @@ export default function Home() {
                         Date
                       </label>
                     </div>
-                    <div className="col-span-1 relative">
+                    <div className="sm:col-span-1 flex items-center justify-end">
+                      <span className="text-sm font-semibold">
+                        {calculateInvoiceItemAmounts(it, true, minutesEnabled).amount.toFixed(2)}
+                      </span>
+                    </div>
+                    </div>
+                    
+                    {/* Second Row */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                    <div className="sm:col-span-3 relative">
                       <input
                         type="time"
                         id={`start-${index}`}
@@ -1857,7 +1869,7 @@ export default function Home() {
                         Start Time
                       </label>
                     </div>
-                    <div className="col-span-1 relative">
+                    <div className="sm:col-span-3 relative">
                       <input
                         type="time"
                         id={`finish-${index}`}
@@ -1872,7 +1884,7 @@ export default function Home() {
                         Finish Time
                       </label>
                     </div>
-                    <div className="col-span-2 relative">
+                    <div className="sm:col-span-5 relative">
                       <input
                         type="number"
                         id={`mileage-${index}`}
@@ -1890,10 +1902,7 @@ export default function Home() {
                         Mileage
                       </label>
                     </div>
-                    <div className="col-span-1 text-right font-semibold">
-                      {calculateInvoiceItemAmounts(it, true, minutesEnabled).amount.toFixed(2)}
-                    </div>
-                    <div className="col-span-1 flex justify-end">
+                    <div className="sm:col-span-1 flex justify-end items-end">
                       {invoiceItems.length > 1 && (
                         <button
                           onClick={() => removeInvoiceItem(index)}
@@ -1904,6 +1913,7 @@ export default function Home() {
                           ×
                         </button>
                       )}
+                    </div>
                     </div>
                   </div>
                 ))
